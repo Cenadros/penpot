@@ -145,7 +145,8 @@
 
 (defn add-page
   [file data]
-  (dm/assert! (nil? (:current-component-id file)))
+  (js/console.log "add page" (clj->js data))
+      (dm/assert! (nil? (:current-component-id file)))
   (let [page-id (or (:id data) (uuid/next))
         page (-> (ctp/make-empty-page {:id page-id :name "Page 1"})
                  (d/deep-merge data))]
@@ -175,6 +176,7 @@
       (clear-names)))
 
 (defn add-artboard [file data]
+  (js/console.log "add artboard" (clj->js data))
   (let [obj (-> (cts/setup-shape (assoc data :type :frame))
                 (check-name file :frame))]
     (-> file
@@ -185,6 +187,7 @@
         (update :parent-stack conjv (:id obj)))))
 
 (defn close-artboard [file]
+      (js/console.log "close artboard")
   (let [components-v2 (dm/get-in file [:data :options :components-v2])
         parent-id (-> file :parent-stack peek)
         parent (lookup-shape file parent-id)
@@ -196,6 +199,7 @@
         (update :parent-stack pop))))
 
 (defn add-group [file data]
+  (js/console.log "add group" (clj->js data))
   (let [frame-id (:current-frame-id file)
         obj      (-> (cts/setup-shape (assoc data :type :group :frame-id frame-id))
                      (check-name file :group))]
@@ -206,6 +210,7 @@
         (update :parent-stack conjv (:id obj)))))
 
 (defn close-group [file]
+  (js/console.log "close group")
   (let [group-id (-> file :parent-stack peek)
         group    (lookup-shape file group-id)
         children (->> group :shapes (mapv #(lookup-shape file %)))
@@ -257,6 +262,7 @@
         (update :parent-stack pop))))
 
 (defn add-bool [file data]
+  (js/console.log "add bool" (clj->js data))
   (let [frame-id (:current-frame-id file)
         obj      (-> (cts/setup-shape (assoc data :type :bool :frame-id frame-id))
                      (check-name file :bool))]
@@ -267,6 +273,7 @@
         (update :parent-stack conjv (:id obj)))))
 
 (defn close-bool [file]
+      (js/console.log "close bool")
   (let [bool-id (-> file :parent-stack peek)
         bool    (lookup-shape file bool-id)
         children (->> bool :shapes (mapv #(lookup-shape file %)))
@@ -316,12 +323,15 @@
         (add-name (:name obj)))))
 
 (defn create-rect [file data]
+  (js/console.log "create rect" (clj->js data))
   (create-shape file :rect data))
 
 (defn create-circle [file data]
+  (js/console.log "create circle" (clj->js data))
   (create-shape file :circle data))
 
 (defn create-path [file data]
+  (js/console.log "create path" (clj->js data))
   (create-shape file :path data))
 
 (defn- clean-text-content
@@ -335,15 +345,18 @@
      content)))
 
 (defn create-text [file data]
+  (js/console.log "create text" (clj->js data))
   (let [data (d/update-when data :content clean-text-content)]
     (create-shape file :text data)))
 
 (defn create-image [file data]
+  (js/console.log "create image" (clj->js data))
   (create-shape file :image data))
 
 (declare close-svg-raw)
 
 (defn create-svg-raw [file data]
+  (js/console.log "create svg raw" (clj->js data))
   (let [file (as-> file $
                (create-shape $ :svg-raw data)
                (update $ :parent-stack conjv (:last-id $)))
@@ -361,6 +374,7 @@
     (reduce create-child file (dm/get-in data [:content :content]))))
 
 (defn close-svg-raw [file]
+  (js/console.log "close svg raw")
   (-> file
       (update :parent-stack pop)))
 
@@ -453,6 +467,7 @@
 
 (defn add-library-color
   [file color]
+  (js/console.log "add library color" (clj->js color))
   (let [id (or (:id color) (uuid/next))]
     (-> file
         (commit-change
@@ -462,6 +477,7 @@
 
 (defn update-library-color
   [file color]
+  (js/console.log "update library color" (clj->js color))
   (let [id (uuid/uuid (:id color))]
     (-> file
         (commit-change
@@ -471,6 +487,7 @@
 
 (defn delete-library-color
   [file color-id]
+  (js/console.log "delete library color" (clj->js color-id))
   (let [id (uuid/uuid color-id)]
     (-> file
         (commit-change
@@ -479,6 +496,7 @@
 
 (defn add-library-typography
   [file typography]
+  (js/console.log "add library typography" (clj->js typography))
   (let [id (or (:id typography) (uuid/next))]
     (-> file
         (commit-change
@@ -489,6 +507,7 @@
 
 (defn delete-library-typography
   [file typography-id]
+  (js/console.log "delete library typography" (clj->js typography-id))
   (let [id (uuid/uuid typography-id)]
     (-> file
         (commit-change
@@ -497,6 +516,7 @@
 
 (defn add-library-media
   [file media]
+  (js/console.log "add library media" (clj->js media))
   (let [id (or (:id media) (uuid/next))]
     (-> file
         (commit-change
@@ -506,6 +526,7 @@
 
 (defn delete-library-media
   [file media-id]
+  (js/console.log "delete library media" (clj->js media-id))
   (let [id (uuid/uuid media-id)]
     (-> file
         (commit-change
@@ -519,6 +540,7 @@
      (start-component file data root-type)))
 
   ([file data root-type]
+   (js/console.log "start component" (clj->js data))
    ;; FIXME: data probably can be a shape instance, then we can use gsh/shape->rect
    (let [components-v2 (dm/get-in file [:data :options :components-v2])
          selrect (or (grc/make-rect (:x data) (:y data) (:width data) (:height data))
@@ -592,6 +614,7 @@
 
 (defn finish-component
   [file]
+  (js/console.log "finish component")
   (let [component-id (:current-component-id file)
         component-data (ctkl/get-component (:data file) component-id)
 
@@ -669,6 +692,7 @@
 
 (defn create-component-instance
   [file data]
+  (js/console.log "create component instance" (clj->js data))
   (let [component-id     (uuid/uuid (:component-id data))
         x                (:x data)
         y                (:y data)
