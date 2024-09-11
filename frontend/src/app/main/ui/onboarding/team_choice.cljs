@@ -8,17 +8,16 @@
   (:require-macros [app.main.style :as stl])
   (:require
    [app.common.data.macros :as dm]
-   [app.common.spec :as us]
+   [app.common.schema :as sm]
    [app.main.data.dashboard :as dd]
    [app.main.data.events :as ev]
-   [app.main.data.messages :as msg]
+   [app.main.data.notifications :as ntf]
    [app.main.data.users :as du]
    [app.main.store :as st]
    [app.main.ui.components.forms :as fm]
    [app.main.ui.icons :as i]
    [app.util.i18n :as i18n :refer [tr]]
    [app.util.router :as rt]
-   [cljs.spec.alpha :as s]
    [potok.v2.core :as ptk]
    [rumext.v2 :as mf]))
 
@@ -55,11 +54,10 @@
      [:p {:class (stl/css :modal-desc)}
       (tr "onboarding.team-modal.create-team-feature-5")]]]])
 
-
-(s/def ::emails (s/and ::us/set-of-valid-emails))
-(s/def ::role  ::us/keyword)
-(s/def ::invite-form
-  (s/keys :req-un [::role ::emails]))
+(def ^:private schema:invite-form
+  [:map {:title "InviteForm"}
+   [:role :keyword]
+   [:emails [::sm/set {:kind ::sm/email}]]])
 
 (defn- get-available-roles
   []
@@ -68,12 +66,12 @@
 
 (mf/defc team-form-step-2
   {::mf/props :obj}
-  [{:keys [name on-back]}]
+  [{:keys [name on-back go-to-team?]}]
   (let [initial (mf/use-memo
                  #(do {:role "editor"
                        :name name}))
 
-        form    (fm/use-form :spec ::invite-form
+        form    (fm/use-form :schema schema:invite-form
                              :initial initial)
 
         params  (:clean-data @form)
@@ -87,12 +85,13 @@
            (let [team-id (:id response)]
              (st/emit! (du/update-profile-props {:onboarding-team-id team-id
                                                  :onboarding-viewed true})
-                       (rt/nav :dashboard-projects {:team-id team-id})))))
+                       (when go-to-team?
+                         (rt/nav :dashboard-projects {:team-id team-id}))))))
 
         on-error
         (mf/use-fn
          (fn [_]
-           (st/emit! (msg/error (tr "errors.generic")))))
+           (st/emit! (ntf/error (tr "errors.generic")))))
 
         on-invite-later
         (mf/use-fn
@@ -153,7 +152,7 @@
                             :name :emails
                             :auto-focus? true
                             :trim true
-                            :valid-item-fn us/parse-email
+                            :valid-item-fn sm/parse-email
                             :caution-item-fn #{}
                             :label (tr "modals.invite-member.emails")
                             :on-submit on-submit}]]
@@ -174,18 +173,16 @@
 
      [:div {:class (stl/css :paginator)} "2/2"]]))
 
+(def ^:private schema:team-form
+  [:map {:title "TeamForm"}
+   [:name [::sm/text {:max 250}]]])
+
 (mf/defc team-form-step-1
   {::mf/props :obj
    ::mf/private true}
   [{:keys [on-submit]}]
-  (let [validators (mf/with-memo []
-                     [(fm/validate-not-empty :name (tr "auth.name.not-all-space"))
-                      (fm/validate-length :name fm/max-length-allowed (tr "auth.name.too-long"))])
-
-        form       (fm/use-form
-                    :spec ::team-form
-                    :initial {}
-                    :validators validators)
+  (let [form (fm/use-form :schema schema:team-form
+                          :initial {})
 
         on-submit*
         (mf/use-fn
@@ -242,13 +239,9 @@
 
      [:div {:class (stl/css :paginator)} "1/2"]]))
 
-(s/def ::name ::us/not-empty-string)
-(s/def ::team-form
-  (s/keys :req-un [::name]))
-
 (mf/defc onboarding-team-modal
   {::mf/props :obj}
-  []
+  [{:keys [go-to-team?]}]
   (let [name* (mf/use-state nil)
         name  (deref name*)
 
@@ -270,6 +263,6 @@
       [:& left-sidebar]
       [:div {:class (stl/css :separator)}]
       (if name
-        [:& team-form-step-2 {:name name :on-back on-back}]
+        [:& team-form-step-2 {:name name :on-back on-back :go-to-team? go-to-team?}]
         [:& team-form-step-1 {:on-submit on-submit}])]]))
 

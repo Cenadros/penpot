@@ -91,7 +91,7 @@
   (sm/define
     [:map {:title "duplicate-file"}
      [:file-id ::sm/uuid]
-     [:name {:optional true} :string]]))
+     [:name {:optional true} [:string {:max 250}]]]))
 
 (sv/defmethod ::duplicate-file
   "Duplicate a single file in the same team."
@@ -153,7 +153,7 @@
   (sm/define
     [:map {:title "duplicate-project"}
      [:project-id ::sm/uuid]
-     [:name {:optional true} :string]]))
+     [:name {:optional true} [:string {:max 250}]]]))
 
 (sv/defmethod ::duplicate-project
   "Duplicate an entire project with all the files"
@@ -382,10 +382,9 @@
 
 (def ^:private
   schema:move-project
-  (sm/define
-    [:map {:title "move-project"}
-     [:team-id ::sm/uuid]
-     [:project-id ::sm/uuid]]))
+  [:map {:title "move-project"}
+   [:team-id ::sm/uuid]
+   [:project-id ::sm/uuid]])
 
 (sv/defmethod ::move-project
   "Move projects between teams"
@@ -397,8 +396,8 @@
 
 ;; --- COMMAND: Clone Template
 
-(defn- clone-template
-  [cfg {:keys [project-id ::rpc/profile-id] :as params} template]
+(defn clone-template
+  [cfg {:keys [project-id profile-id] :as params} template]
   (db/tx-run! cfg (fn [{:keys [::db/conn ::wrk/executor] :as cfg}]
                     ;; NOTE: the importation process performs some operations that
                     ;; are not very friendly with virtual threads, and for avoid
@@ -417,6 +416,7 @@
                         (doseq [file-id result]
                           (let [props (assoc props :id file-id)
                                 event (-> (audit/event-from-rpc-params params)
+                                          (assoc ::audit/profile-id profile-id)
                                           (assoc ::audit/name "create-file")
                                           (assoc ::audit/props props))]
                             (audit/submit! cfg event))))
@@ -425,10 +425,9 @@
 
 (def ^:private
   schema:clone-template
-  (sm/define
-    [:map {:title "clone-template"}
-     [:project-id ::sm/uuid]
-     [:template-id ::sm/word-string]]))
+  [:map {:title "clone-template"}
+   [:project-id ::sm/uuid]
+   [:template-id ::sm/word-string]])
 
 (sv/defmethod ::clone-template
   "Clone into the specified project the template by its id."
@@ -439,7 +438,8 @@
   [{:keys [::db/pool] :as cfg} {:keys [::rpc/profile-id project-id template-id] :as params}]
   (let [project   (db/get-by-id pool :project project-id {:columns [:id :team-id]})
         _         (teams/check-edition-permissions! pool profile-id (:team-id project))
-        template  (tmpl/get-template-stream cfg template-id)]
+        template  (tmpl/get-template-stream cfg template-id)
+        params    (assoc params :profile-id profile-id)]
 
     (when-not template
       (ex/raise :type :not-found

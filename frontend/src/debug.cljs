@@ -12,6 +12,7 @@
    [app.common.files.validate :as cfv]
    [app.common.json :as json]
    [app.common.logging :as l]
+   [app.common.schema :as sm]
    [app.common.transit :as t]
    [app.common.types.file :as ctf]
    [app.common.uri :as u]
@@ -482,22 +483,29 @@
          (rx/map http/conditional-decode-transit)
          (rx/mapcat rp/handle-response)
          (rx/subs! (fn [{:keys [id]}]
-                     (println "Snapshot saved:" (str id)))
+                     (println "Snapshot saved:" (str id) label))
                    (fn [cause]
                      (js/console.log "EE:" cause))))))
 
 (defn ^:export restore-snapshot
-  [id file-id]
+  [label file-id]
   (when-let [file-id (or (d/parse-uuid file-id)
                          (:current-file-id @st/state))]
-    (when-let [id (d/parse-uuid id)]
+    (let [snapshot-id (sm/parse-uuid label)
+          label       (if snapshot-id nil label)
+          params      (cond-> {:file-id file-id}
+                        (uuid? snapshot-id)
+                        (assoc :id snapshot-id)
+
+                        (string? label)
+                        (assoc :label label))]
       (->> (http/send! {:method :post
                         :uri (u/join cf/public-uri "api/rpc/command/restore-file-snapshot")
-                        :body (http/transit-data {:file-id file-id :id id})})
+                        :body (http/transit-data params)})
            (rx/map http/conditional-decode-transit)
            (rx/mapcat rp/handle-response)
            (rx/subs! (fn [_]
-                       (println "Snapshot restored " id)
-                       #_(.reload js/location))
+                       (println "Snapshot restored " (or snapshot-id label)))
+                     #_(.reload js/location)
                      (fn [cause]
                        (js/console.log "EE:" cause)))))))

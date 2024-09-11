@@ -114,11 +114,10 @@
 
       ;; Run the File GC task that should remove unused file object
       ;; thumbnails
-      (let [result (th/run-task! :file-gc {:min-age 0})]
-        (t/is (= 1 (:processed result))))
+      (th/run-task! :file-gc {:min-age 0 :file-id (:id file)})
 
       (let [result (th/run-task! :objects-gc {:min-age 0})]
-        (t/is (= 2 (:processed result))))
+        (t/is (= 3 (:processed result))))
 
       ;; check if row2 related thumbnail row still exists
       (let [[row :as rows] (th/db-query :file-tagged-object-thumbnail
@@ -134,7 +133,7 @@
       (t/is (some? (sto/get-object storage (:media-id row2))))
 
       ;; run the task again
-      (let [res (th/run-task! "storage-gc-touched" {:min-age 0})]
+      (let [res (th/run-task! :storage-gc-touched {:min-age 0})]
         (t/is (= 1 (:delete res)))
         (t/is (= 0 (:freeze res))))
 
@@ -217,8 +216,7 @@
 
       ;; Run the File GC task that should remove unused file object
       ;; thumbnails
-      (let [result (th/run-task! :file-gc {:min-age 0})]
-        (t/is (= 1 (:processed result))))
+      (t/is (true? (th/run-task! :file-gc {:min-age 0 :file-id (:id file)})))
 
       (let [result (th/run-task! :objects-gc {:min-age 0})]
         (t/is (= 2 (:processed result))))

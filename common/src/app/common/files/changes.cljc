@@ -31,29 +31,41 @@
 ;; SCHEMAS
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(def ^:private
-  schema:operation
-  (sm/define
-    [:multi {:dispatch :type :title "Operation" ::smd/simplified true}
-     [:set
-      [:map {:title "SetOperation"}
-       [:type [:= :set]]
-       [:attr :keyword]
-       [:val :any]
-       [:ignore-touched {:optional true} :boolean]
-       [:ignore-geometry {:optional true} :boolean]]]
-     [:set-touched
-      [:map {:title "SetTouchedOperation"}
-       [:type [:= :set-touched]]
-       [:touched [:maybe [:set :keyword]]]]]
-     [:set-remote-synced
-      [:map {:title "SetRemoteSyncedOperation"}
-       [:type [:= :set-remote-synced]]
-       [:remote-synced {:optional true} [:maybe :boolean]]]]]))
+(def schema:operation
+  [:multi {:dispatch :type
+           :title "Operation"
+           :decode/json #(update % :type keyword)
+           ::smd/simplified true}
+   [:assign
+    [:map {:title "AssignOperation"}
+     [:type [:= :assign]]
+     ;; NOTE: the full decoding is happening on the handler because it
+     ;; needs a proper context of the current shape and its type
+     [:value [:map-of :keyword :any]]
+     [:ignore-touched {:optional true} :boolean]
+     [:ignore-geometry {:optional true} :boolean]]]
+   [:set
+    [:map {:title "SetOperation"}
+     [:type [:= :set]]
+     [:attr :keyword]
+     [:val :any]
+     [:ignore-touched {:optional true} :boolean]
+     [:ignore-geometry {:optional true} :boolean]]]
+   [:set-touched
+    [:map {:title "SetTouchedOperation"}
+     [:type [:= :set-touched]]
+     [:touched [:maybe [:set :keyword]]]]]
+   [:set-remote-synced
+    [:map {:title "SetRemoteSyncedOperation"}
+     [:type [:= :set-remote-synced]]
+     [:remote-synced {:optional true} [:maybe :boolean]]]]])
 
-(sm/define! ::change
+(def schema:change
   [:schema
-   [:multi {:dispatch :type :title "Change" ::smd/simplified true}
+   [:multi {:dispatch :type
+            :title "Change"
+            :decode/json #(update % :type keyword)
+            ::smd/simplified true}
     [:set-option
      [:map {:title "SetOptionChange"}
       [:type [:= :set-option]]
@@ -133,6 +145,18 @@
       [:id ::sm/uuid]
       [:name :string]]]
 
+    [:mod-plugin-data
+     [:map {:title "ModPagePluginData"}
+      [:type [:= :mod-plugin-data]]
+      [:object-type [::sm/one-of #{:file :page :shape :color :typography :component}]]
+      ;; It's optional because files don't need the id for type :file
+      [:object-id {:optional true} [:maybe ::sm/uuid]]
+      ;; Only needed in type shape
+      [:page-id {:optional true} [:maybe ::sm/uuid]]
+      [:namespace :keyword]
+      [:key :string]
+      [:value [:maybe :string]]]]
+
     [:del-page
      [:map {:title "DelPageChange"}
       [:type [:= :del-page]]
@@ -166,10 +190,9 @@
       [:type [:= :del-color]]
       [:id ::sm/uuid]]]
 
+    ;; DEPRECATED: remove before 2.3
     [:add-recent-color
-     [:map {:title "AddRecentColorChange"}
-      [:type [:= :add-recent-color]]
-      [:color ::ctc/recent-color]]]
+     [:map {:title "AddRecentColorChange"}]]
 
     [:add-media
      [:map {:title "AddMediaChange"}
@@ -234,8 +257,11 @@
       [:type [:= :del-typography]]
       [:id ::sm/uuid]]]]])
 
-(sm/define! ::changes
-  [:sequential {:gen/max 2} ::change])
+(def schema:changes
+  [:sequential {:gen/max 5 :gen/min 1} schema:change])
+
+(sm/register! ::change schema:change)
+(sm/register! ::changes schema:changes)
 
 (def check-change!
   (sm/check-fn ::change))
@@ -255,6 +281,16 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Page Transformation Changes
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(def ^:dynamic *touched-changes*
+  "A dynamic var that used for track changes that touch shapes on
+  first processing phase of changes. Should be set to a hash-set
+  instance and will contain changes that caused the touched
+  modification."
+  nil)
+
+(defmulti process-change (fn [_ change] (:type change)))
+(defmulti process-operation (fn [_ op] (:type op)))
 
 ;; Changes Processing Impl
 
@@ -284,8 +320,19 @@
                       nil))))
          (run! validate-shape!))))
 
-(defmulti process-change (fn [_ change] (:type change)))
-(defmulti process-operation (fn [_ _ op] (:type op)))
+(defn- process-touched-change
+  [data {:keys [id page-id component-id]}]
+  (let [objects (if page-id
+                  (-> data :pages-index (get page-id) :objects)
+                  (-> data :components (get component-id) :objects))
+        shape   (get objects id)
+        croot   (ctn/get-component-shape objects shape {:allow-main? true})]
+
+    (if (and (some? croot) (ctk/main-instance? croot))
+      (ctkl/set-component-modified data (:component-id croot))
+      (if (some? component-id)
+        (ctkl/set-component-modified data component-id)
+        data))))
 
 (defn process-changes
   ([data items]
@@ -299,10 +346,15 @@
       "expected valid changes"
       (check-changes! items)))
 
-   (let [result (reduce #(or (process-change %1 %2) %1) data items)]
-     ;; Validate result shapes (only on the backend)
-     #?(:clj (validate-shapes! data result items))
-     result)))
+   (binding [*touched-changes* (volatile! #{})]
+     (let [result (reduce #(or (process-change %1 %2) %1) data items)
+           result (reduce process-touched-change result @*touched-changes*)]
+       ;; Validate result shapes (only on the backend)
+       ;;
+       ;; TODO: (PERF) add changed shapes tracking and only validate
+       ;; the tracked changes instead of iterate over all shapes
+       #?(:clj (validate-shapes! data result items))
+       result))))
 
 (defmethod process-change :set-option
   [data {:keys [page-id option value]}]
@@ -323,83 +375,51 @@
       (d/update-in-when data [:pages-index page-id] update-container)
       (d/update-in-when data [:components component-id] update-container))))
 
+(defn- process-operations
+  [objects {:keys [id operations] :as change}]
+  (if-let [shape (get objects id)]
+    (let [shape    (reduce process-operation shape operations)
+          touched? (-> shape meta ::ctn/touched)]
+      ;; NOTE: processing operation functions can assign
+      ;; the ::ctn/touched metadata on shapes, in this case we
+      ;; need to report them for to be used in the second
+      ;; phase of changes procesing
+      (when touched? (some-> *touched-changes* (vswap! conj change)))
+      (assoc objects id shape))
+
+    objects))
+
 (defmethod process-change :mod-obj
-  [data {:keys [id page-id component-id operations]}]
-  (let [changed? (atom false)
+  [data {:keys [page-id component-id] :as change}]
+  (if page-id
+    (d/update-in-when data [:pages-index page-id :objects] process-operations change)
+    (d/update-in-when data [:components component-id :objects] process-operations change)))
 
-        process-and-register (partial process-operation
-                                      (fn [_shape] (reset! changed? true)))
+(defn- process-children-reordering
+  [objects {:keys [parent-id shapes] :as change}]
+  (if-let [old-shapes (dm/get-in objects [parent-id :shapes])]
+    (let [id->idx
+          (update-vals
+           (->> (d/enumerate shapes)
+                (group-by second))
+           (comp first first))
 
-        update-fn (fn [objects]
-                    (d/update-when objects id
-                                   #(reduce process-and-register % operations)))
+          new-shapes
+          (vec (sort-by #(d/nilv (id->idx %) -1) < old-shapes))]
 
-        check-modify-component (fn [data]
-                                 (if @changed?
-                                   ;; When a shape is modified, if it belongs to a main component instance,
-                                   ;; the component needs to be marked as modified.
-                                   (let [objects (if page-id
-                                                   (-> data :pages-index (get page-id) :objects)
-                                                   (-> data :components (get component-id) :objects))
-                                         shape (get objects id)
-                                         component-root (ctn/get-component-shape objects shape {:allow-main? true})]
-                                     (if (and (some? component-root) (ctk/main-instance? component-root))
-                                       (ctkl/set-component-modified data (:component-id component-root))
-                                       (if (some? component-id)
-                                         (ctkl/set-component-modified data component-id)
-                                         data)))
-                                   data))]
+      (if (not= old-shapes new-shapes)
+        (do
+          (some-> *touched-changes* (vswap! conj change))
+          (update objects parent-id assoc :shapes new-shapes))
+        objects))
 
-    (as-> data $
-      (if page-id
-        (d/update-in-when $ [:pages-index page-id :objects] update-fn)
-        (d/update-in-when $ [:components component-id :objects] update-fn))
-      (check-modify-component $))))
+    objects))
 
 (defmethod process-change :reorder-children
-  [data {:keys [parent-id shapes page-id component-id]}]
-  (let [changed? (atom false)
-
-        update-fn
-        (fn [objects]
-          (let [old-shapes (dm/get-in objects [parent-id :shapes])
-
-                id->idx
-                (update-vals
-                 (->> shapes
-                      d/enumerate
-                      (group-by second))
-                 (comp first first))
-
-                new-shapes
-                (into [] (sort-by #(d/nilv (id->idx %) -1) < old-shapes))]
-
-            (reset! changed? (not= old-shapes new-shapes))
-
-            (cond-> objects
-              @changed?
-              (d/assoc-in-when [parent-id :shapes] new-shapes))))
-
-        check-modify-component
-        (fn [data]
-          (if @changed?
-            ;; When a shape is modified, if it belongs to a main component instance,
-            ;; the component needs to be marked as modified.
-            (let [objects (if page-id
-                            (-> data :pages-index (get page-id) :objects)
-                            (-> data :components (get component-id) :objects))
-                  shape (get objects parent-id)
-                  component-root (ctn/get-component-shape objects shape {:allow-main? true})]
-              (if (and (some? component-root) (ctk/main-instance? component-root))
-                (ctkl/set-component-modified data (:component-id component-root))
-                data))
-            data))]
-
-    (as-> data $
-      (if page-id
-        (d/update-in-when $ [:pages-index page-id :objects] update-fn)
-        (d/update-in-when $ [:components component-id :objects] update-fn))
-      (check-modify-component $))))
+  [data {:keys [page-id component-id] :as change}]
+  (if page-id
+    (d/update-in-when data [:pages-index page-id :objects] process-children-reordering change)
+    (d/update-in-when data [:components component-id :objects] process-children-reordering change)))
 
 (defmethod process-change :del-obj
   [data {:keys [page-id component-id id ignore-touched]}]
@@ -586,6 +606,35 @@
   [data {:keys [id name]}]
   (d/update-in-when data [:pages-index id] assoc :name name))
 
+(defmethod process-change :mod-plugin-data
+  [data {:keys [object-type object-id page-id namespace key value]}]
+
+  (when (and (= object-type :shape) (nil? page-id))
+    (ex/raise :type :internal :hint "update for shapes needs a page-id"))
+
+  (letfn [(update-fn [data]
+            (if (some? value)
+              (assoc-in data [:plugin-data namespace key] value)
+              (update-in data [:plugin-data namespace] (fnil dissoc {}) key)))]
+    (case object-type
+      :file
+      (update-fn data)
+
+      :page
+      (d/update-in-when data [:pages-index object-id :options] update-fn)
+
+      :shape
+      (d/update-in-when data [:pages-index page-id :objects object-id] update-fn)
+
+      :color
+      (d/update-in-when data [:colors object-id] update-fn)
+
+      :typography
+      (d/update-in-when data [:typographies object-id] update-fn)
+
+      :component
+      (d/update-in-when data [:components object-id] update-fn))))
+
 (defmethod process-change :del-page
   [data {:keys [id]}]
   (ctpl/delete-page data id))
@@ -606,18 +655,10 @@
   [data {:keys [id]}]
   (ctcl/delete-color data id))
 
+;; DEPRECATED: remove before 2.3
 (defmethod process-change :add-recent-color
-  [data {:keys [color]}]
-  ;; Moves the color to the top of the list and then truncates up to 15
-  (update
-   data
-   :recent-colors
-   (fn [rc]
-     (let [rc (->> rc (d/removev (partial ctc/eq-recent-color? color)))
-           rc (-> rc (conj color))]
-       (cond-> rc
-         (> (count rc) 15)
-         (subvec 1))))))
+  [data _]
+  data)
 
 ;; -- Media
 
@@ -670,33 +711,49 @@
   (ctyl/delete-typography data id))
 
 ;; === Operations
+
+(def ^:private decode-shape
+  (sm/decoder cts/schema:shape sm/json-transformer))
+
+(defmethod process-operation :assign
+  [{:keys [type] :as shape} {:keys [value] :as op}]
+  (let [modifications (assoc value :type type)
+        modifications (decode-shape modifications)]
+    (reduce-kv (fn [shape k v]
+                 (process-operation shape {:type :set
+                                           :attr k
+                                           :val v
+                                           :ignore-touched (:ignore-touched op)
+                                           :ignore-geometry (:ignore-geometry op)}))
+               shape
+               modifications)))
+
 (defmethod process-operation :set
-  [on-changed shape op]
+  [shape op]
   (ctn/set-shape-attr shape
                       (:attr op)
                       (:val op)
-                      :on-changed on-changed
                       :ignore-touched (:ignore-touched op)
                       :ignore-geometry (:ignore-geometry op)))
 
 (defmethod process-operation :set-touched
-  [_ shape op]
-  (let [touched (:touched op)
+  [shape op]
+  (let [touched  (:touched op)
         in-copy? (ctk/in-component-copy? shape)]
     (if (or (not in-copy?) (nil? touched) (empty? touched))
       (dissoc shape :touched)
       (assoc shape :touched touched))))
 
 (defmethod process-operation :set-remote-synced
-  [_ shape op]
+  [shape op]
   (let [remote-synced (:remote-synced op)
-        in-copy? (ctk/in-component-copy? shape)]
+        in-copy?      (ctk/in-component-copy? shape)]
     (if (or (not in-copy?) (not remote-synced))
       (dissoc shape :remote-synced)
       (assoc shape :remote-synced true))))
 
 (defmethod process-operation :default
-  [_ _ op]
+  [_ op]
   (ex/raise :type :not-implemented
             :code :operation-not-implemented
             :context {:type (:type op)}))
@@ -822,5 +879,3 @@
 (defmethod frames-changed :default
   [_ _]
   nil)
-
-

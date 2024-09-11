@@ -13,8 +13,10 @@
    [app.main.data.events :as ev]
    [app.util.browser-history :as bhistory]
    [app.util.dom :as dom]
+   [app.util.globals :as globals]
    [app.util.timers :as ts]
    [beicon.v2.core :as rx]
+   [cuerdas.core :as str]
    [goog.events :as e]
    [potok.v2.core :as ptk]
    [reitit.core :as r]))
@@ -142,6 +144,25 @@
     (when (or (nil? (:host referrer))
               (= (.-hostname location) (:host referrer)))
       (nav-back))))
+
+(defn nav-root
+  "Navigate to the root page."
+  []
+  (set! (.-href globals/location) "/"))
+
+(defn nav-raw
+  [href]
+  (ptk/reify ::nav-raw
+    ptk/EffectEvent
+    (effect [_ _ _]
+      (set! (.-href globals/location) href))))
+
+(defn get-current-path
+  []
+  (let [hash (.-hash globals/location)]
+    (if (str/starts-with? hash "#")
+      (subs hash 1)
+      hash)))
 
 ;; --- History API
 

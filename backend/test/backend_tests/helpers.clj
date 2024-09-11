@@ -58,15 +58,14 @@
 (def ^:dynamic *system* nil)
 (def ^:dynamic *pool* nil)
 
-(def defaults
+(def default
   {:database-uri "postgresql://postgres/penpot_test"
    :redis-uri "redis://redis/1"
-   :file-change-snapshot-every 1})
+   :file-snapshot-every 1})
 
 (def config
-  (->> (cf/read-env "penpot-test")
-       (merge cf/defaults defaults)
-       (us/conform ::cf/config)))
+  (cf/read-config :prefix "penpot-test"
+                  :default (merge cf/default default)))
 
 (def default-flags
   [:enable-secure-session-cookies
@@ -77,6 +76,7 @@
    :enable-feature-fdata-pointer-map
    :enable-feature-fdata-objets-map
    :enable-feature-components-v2
+   :enable-auto-file-snapshot
    :disable-file-validation])
 
 (defn state-init
@@ -87,6 +87,8 @@
                 app.auth/derive-password identity
                 app.auth/verify-password (fn [a b] {:valid (= a b)})
                 app.common.features/get-enabled-features (fn [& _] app.common.features/supported-features)]
+
+    (cf/validate! :exit-on-error? false)
 
     (fs/create-dir "/tmp/penpot")
 
@@ -104,10 +106,10 @@
                      (dissoc :app.srepl/server
                              :app.http/server
                              :app.http/router
-                             :app.auth.oidc/google-provider
-                             :app.auth.oidc/gitlab-provider
-                             :app.auth.oidc/github-provider
-                             :app.auth.oidc/generic-provider
+                             :app.auth.oidc.providers/google
+                             :app.auth.oidc.providers/gitlab
+                             :app.auth.oidc.providers/github
+                             :app.auth.oidc.providers/generic
                              :app.setup/templates
                              :app.auth.oidc/routes
                              :app.worker/monitor
@@ -302,16 +304,18 @@
   ([params] (update-file* *system* params))
   ([system {:keys [file-id changes session-id profile-id revn]
             :or {session-id (uuid/next) revn 0}}]
-   (db/tx-run! system (fn [{:keys [::db/conn] :as system}]
-                        (let [file (files.update/get-file conn file-id)]
-                          (files.update/update-file system
+   (-> system
+       (assoc ::files.update/timestamp (dt/now))
+       (db/tx-run! (fn [{:keys [::db/conn] :as system}]
+                     (let [file (files.update/get-file conn file-id)]
+                       (#'files.update/update-file* system
                                                     {:id file-id
                                                      :revn revn
                                                      :file file
                                                      :features (:features file)
                                                      :changes changes
                                                      :session-id session-id
-                                                     :profile-id profile-id}))))))
+                                                     :profile-id profile-id})))))))
 
 (declare command!)
 
@@ -523,7 +527,6 @@
      (get data key (get cf/config key)))
     ([key default]
      (get data key (get cf/config key default)))))
-
 
 (defn reset-mock!
   [m]

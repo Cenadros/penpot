@@ -39,8 +39,8 @@
    [app.main.data.comments :as dcm]
    [app.main.data.events :as ev]
    [app.main.data.fonts :as df]
-   [app.main.data.messages :as msg]
    [app.main.data.modal :as modal]
+   [app.main.data.notifications :as ntf]
    [app.main.data.persistence :as dps]
    [app.main.data.users :as du]
    [app.main.data.workspace.bool :as dwb]
@@ -79,6 +79,7 @@
    [app.util.http :as http]
    [app.util.i18n :as i18n :refer [tr]]
    [app.util.router :as rt]
+   [app.util.storage :refer [storage]]
    [app.util.timers :as tm]
    [app.util.webapi :as wapi]
    [beicon.v2.core :as rx]
@@ -335,6 +336,7 @@
     ptk/UpdateEvent
     (update [_ state]
       (assoc state
+             :recent-colors (:recent-colors @storage)
              :workspace-ready? false
              :current-file-id file-id
              :current-project-id project-id
@@ -345,7 +347,7 @@
       (log/debug :hint "initialize-file" :file-id file-id)
       (let [stoper-s (rx/filter (ptk/type? ::finalize-file) stream)]
         (rx/merge
-         (rx/of msg/hide
+         (rx/of (ntf/hide)
                 (features/initialize)
                 (dcm/retrieve-comment-threads file-id)
                 (fetch-bundle project-id file-id))
@@ -477,8 +479,8 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn create-page
-  [{:keys [file-id]}]
-  (let [id (uuid/next)]
+  [{:keys [page-id file-id]}]
+  (let [id (or page-id (uuid/next))]
     (ptk/reify ::create-page
       ev/Event
       (-data [_]
@@ -565,6 +567,35 @@
                         (pcb/mod-page page name))]
 
         (rx/of (dch/commit-changes changes))))))
+
+(defn set-plugin-data
+  ([file-id type namespace key value]
+   (set-plugin-data file-id type nil nil namespace key value))
+  ([file-id type id namespace key value]
+   (set-plugin-data file-id type id nil namespace key value))
+  ([file-id type id page-id namespace key value]
+   (dm/assert! (contains? #{:file :page :shape :color :typography :component} type))
+   (dm/assert! (or (nil? id) (uuid? id)))
+   (dm/assert! (or (nil? page-id) (uuid? page-id)))
+   (dm/assert! (uuid? file-id))
+   (dm/assert! (keyword? namespace))
+   (dm/assert! (string? key))
+   (dm/assert! (or (nil? value) (string? value)))
+
+   (ptk/reify ::set-file-plugin-data
+     ptk/WatchEvent
+     (watch [it state _]
+       (let [file-data
+             (if (= file-id (:current-file-id state))
+               (:workspace-data state)
+               (get-in state [:workspace-libraries file-id :data]))
+
+             changes
+             (-> (pcb/empty-changes it)
+                 (pcb/with-file-data file-data)
+                 (assoc :file-id file-id)
+                 (pcb/mod-plugin-data type id page-id namespace key value))]
+         (rx/of (dch/commit-changes changes)))))))
 
 (declare purge-page)
 (declare go-to-file)
@@ -825,15 +856,14 @@
             ids      (filter #(not (cfh/is-parent? objects parent-id %)) ids)
 
             all-parents (into #{parent-id} (map #(cfh/get-parent-id objects %)) ids)
-            parents  (if ignore-parents? #{parent-id} all-parents)
 
-            changes (cls/generate-relocate-shapes (pcb/empty-changes it)
-                                                  objects
-                                                  parents
-                                                  parent-id
-                                                  page-id
-                                                  to-index
-                                                  ids)
+            changes (cls/generate-relocate (pcb/empty-changes it)
+                                           objects
+                                           parent-id
+                                           page-id
+                                           to-index
+                                           ids
+                                           :ignore-parents? ignore-parents?)
             undo-id (js/Symbol)]
 
         (rx/of (dwu/start-undo-transaction undo-id)
@@ -1565,7 +1595,7 @@
           (on-error [cause]
             (let [data (ex-data cause)]
               (if (:not-implemented data)
-                (rx/of (msg/warn (tr "errors.clipboard-not-implemented")))
+                (rx/of (ntf/warn (tr "errors.clipboard-not-implemented")))
                 (js/console.error "Clipboard error:" cause))
               (rx/empty)))]
 

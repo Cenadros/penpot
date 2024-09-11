@@ -7,7 +7,7 @@
 (ns app.rpc.commands.verify-token
   (:require
    [app.common.exceptions :as ex]
-   [app.common.spec :as us]
+   [app.common.schema :as sm]
    [app.config :as cf]
    [app.db :as db]
    [app.db.sql :as-alias sql]
@@ -24,21 +24,19 @@
    [app.tokens :as tokens]
    [app.tokens.spec.team-invitation :as-alias spec.team-invitation]
    [app.util.services :as sv]
-   [clojure.spec.alpha :as s]))
-
-(s/def ::iss keyword?)
-(s/def ::exp ::us/inst)
+   [app.util.time :as dt]))
 
 (defmulti process-token (fn [_ _ claims] (:iss claims)))
 
-(s/def ::verify-token
-  (s/keys :req-un [::token]
-          :opt [::rpc/profile-id]))
+(def ^:private schema:verify-token
+  [:map {:title "verify-token"}
+   [:token [:string {:max 5000}]]])
 
 (sv/defmethod ::verify-token
   {::rpc/auth false
    ::doc/added "1.15"
-   ::doc/module :auth}
+   ::doc/module :auth
+   ::sm/params schema:verify-token}
   [{:keys [::db/pool] :as cfg} {:keys [token] :as params}]
   (db/with-atomic [conn pool]
     (let [claims (tokens/verify (::setup/props cfg) {:token token})
@@ -84,16 +82,8 @@
 
 (defmethod process-token :auth
   [{:keys [conn] :as cfg} _params {:keys [profile-id] :as claims}]
-  (let [profile  (profile/get-profile conn profile-id {::sql/for-update true})
-        props    (merge (:props profile)
-                        (:props claims))]
-    (when (not= props (:props profile))
-      (db/update! conn :profile
-                  {:props (db/tjson props)}
-                  {:id profile-id}))
-
-    (let [profile (assoc profile :props props)]
-      (assoc claims :profile profile))))
+  (let [profile (profile/get-profile conn profile-id)]
+    (assoc claims :profile profile)))
 
 ;; --- Team Invitation
 
@@ -130,28 +120,34 @@
     (db/delete! conn :team-invitation
                 {:team-id team-id :email-to member-email})
 
+    ;; Delete any request
+    (db/delete! conn :team-access-request
+                {:team-id team-id :requester-id (:id member)})
+
     (assoc member :is-active true)))
 
-(s/def ::spec.team-invitation/profile-id ::us/uuid)
-(s/def ::spec.team-invitation/role ::us/keyword)
-(s/def ::spec.team-invitation/team-id ::us/uuid)
-(s/def ::spec.team-invitation/member-email ::us/email)
-(s/def ::spec.team-invitation/member-id (s/nilable ::us/uuid))
+(def schema:team-invitation-claims
+  [:map {:title "TeamInvitationClaims"}
+   [:iss :keyword]
+   [:exp ::dt/instant]
+   [:profile-id ::sm/uuid]
+   [:role teams/schema:role]
+   [:team-id ::sm/uuid]
+   [:member-email ::sm/email]
+   [:member-id {:optional true} ::sm/uuid]])
 
-(s/def ::team-invitation-claims
-  (s/keys :req-un [::iss ::exp
-                   ::spec.team-invitation/profile-id
-                   ::spec.team-invitation/role
-                   ::spec.team-invitation/team-id
-                   ::spec.team-invitation/member-email]
-          :opt-un [::spec.team-invitation/member-id]))
+(def valid-team-invitation-claims?
+  (sm/lazy-validator schema:team-invitation-claims))
 
 (defmethod process-token :team-invitation
   [{:keys [conn] :as cfg}
    {:keys [::rpc/profile-id token] :as params}
    {:keys [member-id team-id member-email] :as claims}]
 
-  (us/verify! ::team-invitation-claims claims)
+  (when-not (valid-team-invitation-claims? claims)
+    (ex/raise :type :validation
+              :code :invalid-invitation-token
+              :hint "invitation token contains unexpected data"))
 
   (let [invitation             (db/get* conn :team-invitation
                                         {:team-id team-id :email-to member-email})

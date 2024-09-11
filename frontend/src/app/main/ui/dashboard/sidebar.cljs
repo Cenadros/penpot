@@ -13,8 +13,8 @@
    [app.config :as cf]
    [app.main.data.dashboard :as dd]
    [app.main.data.events :as ev]
-   [app.main.data.messages :as msg]
    [app.main.data.modal :as modal]
+   [app.main.data.notifications :as ntf]
    [app.main.data.users :as du]
    [app.main.refs :as refs]
    [app.main.store :as st]
@@ -149,7 +149,7 @@
         on-drop-success
         (mf/use-fn
          (mf/deps (:id item))
-         #(st/emit! (msg/success (tr "dashboard.success-move-file"))
+         #(st/emit! (ntf/success (tr "dashboard.success-move-file"))
                     (dd/go-to-files (:id item))))
 
         on-drop
@@ -362,13 +362,13 @@
         (fn [{:keys [code] :as error}]
           (condp = code
             :no-enough-members-for-leave
-            (rx/of (msg/error (tr "errors.team-leave.insufficient-members")))
+            (rx/of (ntf/error (tr "errors.team-leave.insufficient-members")))
 
             :member-does-not-exist
-            (rx/of (msg/error (tr "errors.team-leave.member-does-not-exists")))
+            (rx/of (ntf/error (tr "errors.team-leave.member-does-not-exists")))
 
             :owner-cant-leave-team
-            (rx/of (msg/error (tr "errors.team-leave.owner-cant-leave")))
+            (rx/of (ntf/error (tr "errors.team-leave.owner-cant-leave")))
 
             (rx/throw error)))
 
@@ -786,7 +786,6 @@
        [:li {:class (stl/css-case :current drafts?
                                   :sidebar-nav-item true)}
         [:& link {:action go-drafts
-                  :data-testid "drafts-link-sidebar"
                   :class (stl/css :sidebar-link)
                   :keyboard-action go-drafts-with-key}
          [:span {:class (stl/css :element-title)} (tr "labels.drafts")]]]
@@ -1052,7 +1051,7 @@
   [props]
   (let [team    (obj/get props "team")
         profile (obj/get props "profile")]
-    [:nav {:class (stl/css :dashboard-sidebar)}
+    [:nav {:class (stl/css :dashboard-sidebar) :data-testid "dashboard-sidebar"}
      [:> sidebar-content props]
      [:& profile-section
       {:profile profile

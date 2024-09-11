@@ -13,7 +13,7 @@
    [app.common.logging :as log]
    [app.config :as cf]
    [app.main.data.dashboard :as dd]
-   [app.main.data.messages :as msg]
+   [app.main.data.notifications :as ntf]
    [app.main.features :as features]
    [app.main.fonts :as fonts]
    [app.main.rasterizer :as thr]
@@ -26,6 +26,7 @@
    [app.main.ui.dashboard.import :refer [use-import-file]]
    [app.main.ui.dashboard.inline-edition :refer [inline-edition]]
    [app.main.ui.dashboard.placeholder :refer [empty-placeholder loading-placeholder]]
+   [app.main.ui.ds.product.loader :refer [loader*]]
    [app.main.ui.hooks :as h]
    [app.main.ui.icons :as i]
    [app.main.worker :as wrk]
@@ -96,7 +97,9 @@
                 :src (cf/resolve-media thumbnail-id)
                 :loading "lazy"
                 :decoding "async"}]
-         i/loader-pencil))]))
+         [:> loader* {:class (stl/css :grid-loader)
+                      :overlay true
+                      :title (tr "labels.loading")}]))]))
 
 ;; --- Grid Item Library
 
@@ -114,7 +117,9 @@
 
   [:div {:class (stl/css :grid-item-th :library)}
    (if (nil? file)
-     i/loader-pencil
+     [:> loader* {:class (stl/css :grid-loader)
+                  :overlay true
+                  :title (tr "labels.loading")}]
      (let [summary (:library-summary file)
            components (:components summary)
            colors (:colors summary)
@@ -459,7 +464,6 @@
            :on-drag-leave on-drag-leave
            :on-drop on-drop
            :ref node-ref}
-
      (cond
        (nil? files)
        [:& loading-placeholder]
@@ -556,7 +560,7 @@
 
         on-drop-success
         (fn []
-          (st/emit! (msg/success (tr "dashboard.success-move-file"))
+          (st/emit! (ntf/success (tr "dashboard.success-move-file"))
                     (dd/fetch-recent-files (:id team))
                     (dd/clear-selected-files)))
 

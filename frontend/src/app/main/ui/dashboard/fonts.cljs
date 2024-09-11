@@ -47,7 +47,7 @@
    ::mf/private true}
   [{:keys [section team]}]
   (use-page-title team section)
-  [:header {:class (stl/css :dashboard-header)}
+  [:header {:class (stl/css :dashboard-header) :data-testid "dashboard-header"}
    [:div#dashboard-fonts-title {:class (stl/css :dashboard-title)}
     [:h1 (tr "labels.fonts")]]])
 
@@ -167,7 +167,7 @@
      [:div {:class (stl/css :dashboard-fonts-hero)}
       [:div {:class (stl/css :desc)}
        [:h2 (tr "labels.upload-custom-fonts")]
-       [:& i18n/tr-html {:label "dashboard.fonts.hero-text1"}]
+       [:> i18n/tr-html* {:content (tr "dashboard.fonts.hero-text1")}]
 
        [:button {:class (stl/css :btn-primary)
                  :on-click on-click
@@ -180,12 +180,12 @@
                            :on-selected on-selected}]]
 
        [:& context-notification {:content (tr "dashboard.fonts.hero-text2")
-                                 :type :default
+                                 :level :default
                                  :is-html true}]
 
        (when problematic-fonts?
          [:& context-notification {:content (tr "dashboard.fonts.warning-text")
-                                   :type :warning
+                                   :level :warning
                                    :is-html true}])]]
 
      [:*

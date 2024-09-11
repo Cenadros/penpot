@@ -92,7 +92,8 @@
              (reset! editing* false)
              (when creating?
                (st/emit! (dw/set-annotations-id-for-create nil)))
-             (adjust-textarea-size))))
+             (adjust-textarea-size)
+             (rerender-fn))))
 
         on-edit
         (mf/use-fn
@@ -102,7 +103,8 @@
            (when ^boolean main-instance?
              (when-let [textarea (mf/ref-val textarea-ref)]
                (reset! editing* true)
-               (dom/focus! textarea)))))
+               (dom/focus! textarea)
+               (rerender-fn)))))
 
         on-save
         (mf/use-fn
@@ -116,7 +118,8 @@
                  (reset! editing* false)
                  (st/emit! (dw/update-component-annotation component-id text))
                  (when ^boolean creating?
-                   (st/emit! (dw/set-annotations-id-for-create nil))))))))
+                   (st/emit! (dw/set-annotations-id-for-create nil)))
+                 (rerender-fn))))))
 
         on-delete-annotation
         (mf/use-fn
@@ -129,7 +132,8 @@
                               ;; (ptk/data-event {::ev/name "delete-component-annotation"})
                               (when creating?
                                 (dw/set-annotations-id-for-create nil))
-                              (dw/update-component-annotation component-id nil)))]
+                              (dw/update-component-annotation component-id nil)
+                              (rerender-fn)))]
              (st/emit! (modal/show
                         {:type :confirm
                          :title (tr "modals.delete-component-annotation.title")
@@ -508,12 +512,12 @@
     [:& dropdown {:show show :on-close on-close}
      [:ul {:class (stl/css-case :custom-select-dropdown true
                                 :not-main (not main-instance))}
-      (for [{:keys [msg] :as entry} menu-entries]
-        (when (some? msg)
-          [:li {:key msg
+      (for [{:keys [title action]} menu-entries]
+        (when (some? title)
+          [:li {:key title
                 :class (stl/css :dropdown-element)
-                :on-click (partial do-action (:action entry))}
-           [:span {:class (stl/css :dropdown-label)} (tr msg)]]))]]))
+                :on-click (partial do-action action)}
+           [:span {:class (stl/css :dropdown-label)} title]]))]]))
 
 (mf/defc component-menu
   {::mf/props :obj}

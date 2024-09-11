@@ -5,8 +5,8 @@
 ;; Copyright (c) KALEIDOS INC
 
 (ns app.common.time
-  "A new cross-platform date and time API. It should be prefered over
-  a platform specific implementation found on `app.util.time`."
+  "Minimal cross-platoform date time api for specific use cases on types
+  definition and other common code."
   #?(:cljs
      (:require
       ["luxon" :as lxn])
@@ -64,7 +64,6 @@
        (if ^boolean (.equals it other)
          0
          (if (< (inst-ms it) (inst-ms other)) -1 1)))))
-
 
 #?(:cljs
    (extend-type DateTime

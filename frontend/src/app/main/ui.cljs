@@ -8,13 +8,12 @@
   (:require
    [app.config :as cf]
    [app.main.refs :as refs]
-   [app.main.store :as st]
    [app.main.ui.context :as ctx]
-   [app.main.ui.cursors :as c]
-   [app.main.ui.debug.components-preview :as cm]
+   [app.main.ui.debug.icons-preview :refer [icons-preview]]
+   [app.main.ui.error-boundary :refer [error-boundary*]]
    [app.main.ui.frame-preview :as frame-preview]
    [app.main.ui.icons :as i]
-   [app.main.ui.messages :as msgs]
+   [app.main.ui.notifications :as notifications]
    [app.main.ui.onboarding.newsletter :refer [onboarding-newsletter]]
    [app.main.ui.onboarding.questions :refer [questions-modal]]
    [app.main.ui.onboarding.team-choice :refer [onboarding-team-modal]]
@@ -22,7 +21,6 @@
    [app.main.ui.static :as static]
    [app.util.dom :as dom]
    [app.util.i18n :refer [tr]]
-   [app.util.router :as rt]
    [rumext.v2 :as mf]))
 
 (def auth-page
@@ -43,17 +41,33 @@
 (def workspace-page
   (mf/lazy-component app.main.ui.workspace/workspace))
 
-(mf/defc on-main-error
-  [{:keys [error] :as props}]
-  (mf/with-effect
-    (st/emit! (rt/assign-exception error)))
-  [:span "Internal application error"])
-
 (mf/defc main-page
-  {::mf/wrap [#(mf/catch % {:fallback on-main-error})]
-   ::mf/props :obj}
+  {::mf/props :obj}
   [{:keys [route profile]}]
-  (let [{:keys [data params]} route]
+  (let [{:keys [data params]} route
+        props (get profile :props)
+        show-question-modal?
+        (and (contains? cf/flags :onboarding)
+             (not (:onboarding-viewed props))
+             (not (contains? props :onboarding-questions)))
+
+        show-newsletter-modal?
+        (and (contains? cf/flags :onboarding)
+             (not (:onboarding-viewed props))
+             (not (contains? props :newsletter-updates))
+             (contains? props :onboarding-questions))
+
+        show-team-modal?
+        (and (contains? cf/flags :onboarding)
+             (not (:onboarding-viewed props))
+             (not (contains? props :onboarding-team-id))
+             (contains? props :newsletter-updates))
+
+        show-release-modal?
+        (and (contains? cf/flags :onboarding)
+             (:onboarding-viewed props)
+             (not= (:release-notes-viewed props) (:main cf/version))
+             (not= "0.0" (:main cf/version)))]
     [:& (mf/provider ctx/current-route) {:value route}
      (case (:name data)
        (:auth-login
@@ -76,11 +90,7 @@
 
        :debug-icons-preview
        (when *assert*
-         [:div.debug-preview
-          [:h1 "Cursors"]
-          [:& c/debug-preview]
-          [:h1 "Icons"]
-          [:& i/debug-icons-preview]])
+         [:& icons-preview])
 
        (:dashboard-search
         :dashboard-projects
@@ -97,52 +107,29 @@
         #_[:& app.main.ui.onboarding/onboarding-templates-modal]
         #_[:& app.main.ui.onboarding/onboarding-modal]
         #_[:& app.main.ui.onboarding.team-choice/onboarding-team-modal]
-        (when-let [props (get profile :props)]
-          (let [show-question-modal?
-                (and (contains? cf/flags :onboarding)
-                     (not (:onboarding-viewed props))
-                     (not (contains? props :onboarding-questions)))
 
-                show-newsletter-modal?
-                (and (contains? cf/flags :onboarding)
-                     (not (:onboarding-viewed props))
-                     (not (contains? props :newsletter-updates))
-                     (contains? props :onboarding-questions))
+        (cond
+          show-question-modal?
+          [:& questions-modal]
 
-                show-team-modal?
-                (and (contains? cf/flags :onboarding)
-                     (not (:onboarding-viewed props))
-                     (not (contains? props :onboarding-team-id))
-                     (contains? props :newsletter-updates))
+          show-newsletter-modal?
+          [:& onboarding-newsletter]
 
-                show-release-modal?
-                (and (contains? cf/flags :onboarding)
-                     (:onboarding-viewed props)
-                     (not= (:release-notes-viewed props) (:main cf/version))
-                     (not= "0.0" (:main cf/version)))]
+          show-team-modal?
+          [:& onboarding-team-modal {:go-to-team? true}]
 
-            (cond
-              show-question-modal?
-              [:& questions-modal]
-
-              show-newsletter-modal?
-              [:& onboarding-newsletter]
-
-              show-team-modal?
-              [:& onboarding-team-modal]
-
-              show-release-modal?
-              [:& release-notes-modal {:version (:main cf/version)}])))
+          show-release-modal?
+          [:& release-notes-modal {:version (:main cf/version)}])
 
         [:& dashboard-page {:route route :profile profile}]]
        :viewer
        (let [{:keys [query-params path-params]} route
-             {:keys [index share-id section page-id interactions-mode frame-id]
+             {:keys [index share-id section page-id interactions-mode frame-id share]
               :or {section :interactions interactions-mode :show-on-click}} query-params
              {:keys [file-id]} path-params]
          [:? {}
           (if (:token query-params)
-            [:> static/error-container {}
+            [:> static/error-container* {}
              [:div.image i/detach]
              [:div.main-message (tr "viewer.breaking-change.message")]
              [:div.desc-message (tr "viewer.breaking-change.description")]]
@@ -158,7 +145,8 @@
                                     :hide false
                                     :show true
                                     :show-on-click false)
-              :frame-id frame-id}])])
+              :frame-id frame-id
+              :share share}])])
 
        :workspace
        (let [project-id (some-> params :path :project-id uuid)
@@ -166,17 +154,25 @@
              page-id    (some-> params :query :page-id uuid)
              layout     (some-> params :query :layout keyword)]
          [:? {}
+          (when (cf/external-feature-flag "onboarding-03" "test")
+            (cond
+              show-question-modal?
+              [:& questions-modal]
+
+              show-newsletter-modal?
+              [:& onboarding-newsletter]
+
+              show-team-modal?
+              [:& onboarding-team-modal {:go-to-team? false}]
+
+              show-release-modal?
+              [:& release-notes-modal {:version (:main cf/version)}]))
+
           [:& workspace-page {:project-id project-id
                               :file-id file-id
                               :page-id page-id
                               :layout-name layout
                               :key file-id}]])
-
-
-       :debug-components-preview
-       [:div.debug-preview
-        [:h1 "Components preview"]
-        [:& cm/components-preview]]
 
        :frame-preview
        [:& frame-preview/frame-preview]
@@ -196,8 +192,8 @@
     [:& (mf/provider ctx/current-route) {:value route}
      [:& (mf/provider ctx/current-profile) {:value profile}
       (if edata
-        [:& static/exception-page {:data edata :route route}]
-        [:*
-         [:& msgs/notifications-hub]
+        [:> static/exception-page* {:data edata :route route}]
+        [:> error-boundary* {:fallback static/internal-error*}
+         [:& notifications/current-notification]
          (when route
            [:& main-page {:route route :profile profile}])])]]))

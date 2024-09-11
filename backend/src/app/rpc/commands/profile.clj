@@ -60,10 +60,10 @@
      [:id ::sm/uuid]
      [:fullname [::sm/word-string {:max 250}]]
      [:email ::sm/email]
-     [:is-active {:optional true} :boolean]
-     [:is-blocked {:optional true} :boolean]
-     [:is-demo {:optional true} :boolean]
-     [:is-muted {:optional true} :boolean]
+     [:is-active {:optional true} ::sm/boolean]
+     [:is-blocked {:optional true} ::sm/boolean]
+     [:is-demo {:optional true} ::sm/boolean]
+     [:is-muted {:optional true} ::sm/boolean]
      [:created-at {:optional true} ::sm/inst]
      [:modified-at {:optional true} ::sm/inst]
      [:default-project-id {:optional true} ::sm/uuid]
@@ -210,8 +210,7 @@
   [cfg {:keys [::rpc/profile-id file] :as params}]
   ;; Validate incoming mime type
   (media/validate-media-type! file #{"image/jpeg" "image/png" "image/webp"})
-  (let [cfg (update cfg ::sto/storage media/configure-assets-storage)]
-    (update-profile-photo cfg (assoc params :profile-id profile-id))))
+  (update-profile-photo cfg (assoc params :profile-id profile-id)))
 
 (defn update-profile-photo
   [{:keys [::db/pool ::sto/storage] :as cfg} {:keys [profile-id file] :as params}]
@@ -361,27 +360,31 @@
     [:map {:title "update-profile-props"}
      [:props [:map-of :keyword :any]]]))
 
+(defn update-profile-props
+  [{:keys [::db/conn] :as cfg} profile-id props]
+  (let [profile (get-profile conn profile-id ::sql/for-update true)
+        props   (reduce-kv (fn [props k v]
+                             ;; We don't accept namespaced keys
+                             (if (simple-ident? k)
+                               (if (nil? v)
+                                 (dissoc props k)
+                                 (assoc props k v))
+                               props))
+                           (:props profile)
+                           props)]
+
+    (db/update! conn :profile
+                {:props (db/tjson props)}
+                {:id profile-id})
+
+    (filter-props props)))
+
 (sv/defmethod ::update-profile-props
   {::doc/added "1.0"
    ::sm/params schema:update-profile-props}
-  [{:keys [::db/pool]} {:keys [::rpc/profile-id props]}]
-  (db/with-atomic [conn pool]
-    (let [profile (get-profile conn profile-id ::sql/for-update true)
-          props   (reduce-kv (fn [props k v]
-                               ;; We don't accept namespaced keys
-                               (if (simple-ident? k)
-                                 (if (nil? v)
-                                   (dissoc props k)
-                                   (assoc props k v))
-                                 props))
-                             (:props profile)
-                             props)]
-
-      (db/update! conn :profile
-                  {:props (db/tjson props)}
-                  {:id profile-id})
-
-      (filter-props props))))
+  [cfg {:keys [::rpc/profile-id props]}]
+  (db/tx-run! cfg (fn [cfg]
+                    (update-profile-props cfg profile-id props))))
 
 ;; --- MUTATION: Delete Profile
 

@@ -24,6 +24,7 @@
    [app.common.types.container :as ctn]
    [app.common.types.page :as ctp]
    [app.common.types.pages-list :as ctpl]
+   [app.common.types.plugins :as ctpg]
    [app.common.types.shape-tree :as ctst]
    [app.common.types.typographies-list :as ctyl]
    [app.common.types.typography :as cty]
@@ -34,7 +35,7 @@
 ;; SCHEMA
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(sm/define! ::media-object
+(sm/register! ::media-object
   [:map {:title "FileMediaObject"}
    [:id ::sm/uuid]
    [:name :string]
@@ -43,7 +44,7 @@
    [:mtype :string]
    [:path {:optional true} [:maybe :string]]])
 
-(sm/define! ::data
+(sm/register! ::data
   [:map {:title "FileData"}
    [:pages [:vector ::sm/uuid]]
    [:pages-index
@@ -57,7 +58,8 @@
    [:typographies {:optional true}
     [:map-of {:gen/max 2} ::sm/uuid ::cty/typography]]
    [:media {:optional true}
-    [:map-of {:gen/max 5} ::sm/uuid ::media-object]]])
+    [:map-of {:gen/max 5} ::sm/uuid ::media-object]]
+   [:plugin-data {:optional true} ::ctpg/plugin-data]])
 
 (def check-file-data!
   (sm/check-fn ::data))

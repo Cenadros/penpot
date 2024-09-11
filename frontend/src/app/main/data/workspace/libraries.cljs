@@ -28,8 +28,8 @@
    [app.main.data.changes :as dch]
    [app.main.data.comments :as dc]
    [app.main.data.events :as ev]
-   [app.main.data.messages :as msg]
    [app.main.data.modal :as modal]
+   [app.main.data.notifications :as ntf]
    [app.main.data.workspace :as-alias dw]
    [app.main.data.workspace.groups :as dwg]
    [app.main.data.workspace.notifications :as-alias dwn]
@@ -48,6 +48,7 @@
    [app.util.color :as uc]
    [app.util.i18n :refer [tr]]
    [app.util.router :as rt]
+   [app.util.storage :as s]
    [app.util.time :as dt]
    [beicon.v2.core :as rx]
    [cuerdas.core :as str]
@@ -132,16 +133,21 @@
 
 (defn add-recent-color
   [color]
+
   (dm/assert!
    "expected valid recent color map"
-   (ctc/check-recent-color! color))
+   (ctc/valid-recent-color? color))
 
   (ptk/reify ::add-recent-color
-    ptk/WatchEvent
-    (watch [it _ _]
-      (let [changes (-> (pcb/empty-changes it)
-                        (pcb/add-recent-color color))]
-        (rx/of (dch/commit-changes changes))))))
+    ptk/UpdateEvent
+    (update [_ state]
+      (let [file-id (:current-file-id state)]
+        (update state :recent-colors ctc/add-recent-color file-id color)))
+
+    ptk/EffectEvent
+    (effect [_ state _]
+      (let [recent-colors (:recent-colors state)]
+        (swap! s/storage assoc :recent-colors recent-colors)))))
 
 (def clear-color-for-rename
   (ptk/reify ::clear-color-for-rename
@@ -168,8 +174,11 @@
 
   (dm/assert!
    "expected valid parameters"
-   (and (ctc/check-color! color)
-        (uuid? file-id)))
+   (ctc/valid-color? color))
+
+  (dm/assert!
+   "expected file-id"
+   (uuid? file-id))
 
   (ptk/reify ::update-color
     ptk/WatchEvent
@@ -1016,7 +1025,7 @@
                                                               file))
            (rx/concat
             (rx/of (set-updating-library false)
-                   (msg/hide-tag :sync-dialog))
+                   (ntf/hide {:tag :sync-dialog}))
             (when (seq (:redo-changes changes))
               (rx/of (dch/commit-changes changes)))
             (when-not (empty? updated-frames)
@@ -1041,6 +1050,9 @@
                          (rp/cmd! :update-file-library-sync-status
                                   {:file-id file-id
                                    :library-id library-id}))))))))))
+
+
+;; FIXME: the data should be set on the backend for clock consistency
 
 (def ignore-sync
   "Mark the file as ignore syncs. All library changes before this moment will not
@@ -1081,12 +1093,12 @@
                                                   (sync-file (:current-file-id state)
                                                              (:id library)))
                                                 libraries-need-sync))
-                           (st/emit! msg/hide))
+                           (st/emit! (ntf/hide)))
             do-dismiss #(do (st/emit! ignore-sync)
-                            (st/emit! msg/hide))]
+                            (st/emit! (ntf/hide)))]
 
         (when (seq libraries-need-sync)
-          (rx/of (msg/info-dialog
+          (rx/of (ntf/dialog
                   :content (tr "workspace.updates.there-are-updates")
                   :controls :inline-actions
                   :links   [{:label (tr "workspace.updates.more-info")
@@ -1283,18 +1295,20 @@
     ptk/WatchEvent
     (watch [_ state _]
       (let [features (features/get-team-enabled-features state)]
-        (rx/merge
-         (->> (rp/cmd! :link-file-to-library {:file-id file-id :library-id library-id})
-              (rx/ignore))
-         (->> (rp/cmd! :get-file {:id library-id :features features})
-              (rx/merge-map fpmap/resolve-file)
-              (rx/map (fn [file]
-                        (fn [state]
-                          (assoc-in state [:workspace-libraries library-id] file)))))
-         (->> (rp/cmd! :get-file-object-thumbnails {:file-id library-id :tag "component"})
-              (rx/map (fn [thumbnails]
-                        (fn [state]
-                          (update state :workspace-thumbnails merge thumbnails))))))))))
+        (rx/concat
+         (rx/merge
+          (->> (rp/cmd! :link-file-to-library {:file-id file-id :library-id library-id})
+               (rx/ignore))
+          (->> (rp/cmd! :get-file {:id library-id :features features})
+               (rx/merge-map fpmap/resolve-file)
+               (rx/map (fn [file]
+                         (fn [state]
+                           (assoc-in state [:workspace-libraries library-id] file)))))
+          (->> (rp/cmd! :get-file-object-thumbnails {:file-id library-id :tag "component"})
+               (rx/map (fn [thumbnails]
+                         (fn [state]
+                           (update state :workspace-thumbnails merge thumbnails))))))
+         (rx/of (ptk/reify ::attach-library-finished)))))))
 
 (defn unlink-file-from-library
   [file-id library-id]

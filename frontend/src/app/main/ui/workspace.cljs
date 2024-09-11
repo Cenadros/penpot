@@ -8,8 +8,8 @@
   (:require-macros [app.main.style :as stl])
   (:require
    [app.common.data.macros :as dm]
-   [app.main.data.messages :as msg]
    [app.main.data.modal :as modal]
+   [app.main.data.notifications :as ntf]
    [app.main.data.persistence :as dps]
    [app.main.data.workspace :as dw]
    [app.main.data.workspace.colors :as dc]
@@ -17,9 +17,9 @@
    [app.main.refs :as refs]
    [app.main.store :as st]
    [app.main.ui.context :as ctx]
+   [app.main.ui.ds.product.loader :refer [loader*]]
    [app.main.ui.hooks :as hooks]
    [app.main.ui.hooks.resize :refer [use-resize-observer]]
-   [app.main.ui.icons :as i]
    [app.main.ui.workspace.colorpicker]
    [app.main.ui.workspace.context-menu :refer [context-menu]]
    [app.main.ui.workspace.coordinates :as coordinates]
@@ -86,8 +86,9 @@
        [:& palette {:layout layout
                     :on-change-palette-size on-resize-palette}])
 
-     [:section.workspace-content
+     [:section
       {:key (dm/str "workspace-" page-id)
+       :class (stl/css :workspace-content)
        :ref node-ref}
 
       [:section {:class (stl/css :workspace-viewport)}
@@ -123,8 +124,9 @@
 
 (mf/defc workspace-loader
   []
-  [:div {:class (stl/css :workspace-loader)}
-   i/loader-pencil])
+  [:> loader*  {:title (tr "labels.loading")
+                :class (stl/css :workspace-loader)
+                :overlay true}])
 
 (mf/defc workspace-page
   {::mf/wrap-props false}
@@ -146,7 +148,6 @@
       (fn []
         (when (some? page-id)
           (st/emit! (dw/finalize-page page-id)))))
-
     (if ^boolean page-ready?
       [:& workspace-content {:page-id page-id
                              :file file
@@ -194,7 +195,7 @@
         (st/emit! ::dps/force-persist
                   (dc/stop-picker)
                   (modal/hide)
-                  msg/hide
+                  (ntf/hide)
                   (dw/finalize-file project-id file-id))))
 
     [:& (mf/provider ctx/current-file-id) {:value file-id}
@@ -203,9 +204,9 @@
        [:& (mf/provider ctx/current-page-id) {:value page-id}
         [:& (mf/provider ctx/components-v2) {:value components-v2?}
          [:& (mf/provider ctx/workspace-read-only?) {:value read-only?}
-          [:section#workspace-refactor {:class (stl/css :workspace)
-                                        :style {:background-color background-color
-                                                :touch-action "none"}}
+          [:section {:class (stl/css :workspace)
+                     :style {:background-color background-color
+                             :touch-action "none"}}
            [:& context-menu]
 
            (if ^boolean file-ready?

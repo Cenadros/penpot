@@ -24,6 +24,8 @@
    [clojure.set :as set]
    [potok.v2.core :as ptk]))
 
+;; FIXME: this ns should be renamed to something different
+
 (declare process-message)
 (declare handle-presence)
 (declare handle-pointer-update)
@@ -109,9 +111,15 @@
     ptk/WatchEvent
     (watch [_ state _]
       (let [page-id (:current-page-id state)
+            local   (:workspace-local state)
+
             message {:type :pointer-update
                      :file-id file-id
                      :page-id page-id
+                     :zoom (:zoom local)
+                     :zoom-inverse (:zoom-inverse local)
+                     :vbox (:vbox local)
+                     :vport (:vport local)
                      :position point}]
         (rx/of (dws/send message))))))
 
@@ -173,13 +181,17 @@
           (update state :workspace-presence update-presence))))))
 
 (defn handle-pointer-update
-  [{:keys [page-id session-id position] :as msg}]
+  [{:keys [page-id session-id position zoom zoom-inverse vbox vport] :as msg}]
   (ptk/reify ::handle-pointer-update
     ptk/UpdateEvent
     (update [_ state]
       (update-in state [:workspace-presence session-id]
                  (fn [session]
                    (assoc session
+                          :zoom zoom
+                          :zoom-inverse zoom-inverse
+                          :vbox vbox
+                          :vport vport
                           :point position
                           :updated-at (dt/now)
                           :page-id page-id))))))

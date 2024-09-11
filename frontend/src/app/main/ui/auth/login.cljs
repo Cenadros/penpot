@@ -7,11 +7,10 @@
 (ns app.main.ui.auth.login
   (:require-macros [app.main.style :as stl])
   (:require
-   [app.common.data :as d]
    [app.common.logging :as log]
-   [app.common.spec :as us]
+   [app.common.schema :as sm]
    [app.config :as cf]
-   [app.main.data.messages :as msg]
+   [app.main.data.notifications :as ntf]
    [app.main.data.users :as du]
    [app.main.repo :as rp]
    [app.main.store :as st]
@@ -25,7 +24,6 @@
    [app.util.keyboard :as k]
    [app.util.router :as rt]
    [beicon.v2.core :as rx]
-   [cljs.spec.alpha :as s]
    [rumext.v2 :as mf]))
 
 (def show-alt-login-buttons?
@@ -39,7 +37,7 @@
   {::mf/props :obj}
   []
   [:& context-notification
-   {:type :warning
+   {:level :warning
     :content (tr "auth.demo-warning")}])
 
 (defn create-demo-profile
@@ -60,33 +58,23 @@
                      (cond
                        (and (= type :restriction)
                             (= code :provider-not-configured))
-                       (st/emit! (msg/error (tr "errors.auth-provider-not-configured")))
+                       (st/emit! (ntf/error (tr "errors.auth-provider-not-configured")))
 
                        :else
-                       (st/emit! (msg/error (tr "errors.generic")))))))))
+                       (st/emit! (ntf/error (tr "errors.generic")))))))))
 
-(s/def ::email ::us/email)
-(s/def ::password ::us/not-empty-string)
-(s/def ::invitation-token ::us/not-empty-string)
-
-(s/def ::login-form
-  (s/keys :req-un [::email ::password]
-          :opt-un [::invitation-token]))
-
-(defn handle-error-messages
-  [errors _data]
-  (d/update-when errors :email
-                 (fn [{:keys [code] :as error}]
-                   (cond-> error
-                     (= code ::us/email)
-                     (assoc :message (tr "errors.email-invalid"))))))
+(def ^:private schema:login-form
+  [:map {:title "LoginForm"}
+   [:email [::sm/email {:error/code "errors.invalid-email"}]]
+   [:password [:string {:min 1}]]
+   [:invitation-token {:optional true}
+    [:string {:min 1}]]])
 
 (mf/defc login-form
-  [{:keys [params on-success-callback origin] :as props}]
-  (let [initial (mf/use-memo (mf/deps params) (constantly params))
+  [{:keys [params on-success-callback on-recovery-request origin] :as props}]
+  (let [initial (mf/with-memo [params] params)
         error   (mf/use-state false)
-        form    (fm/use-form :spec ::login-form
-                             :validators [handle-error-messages]
+        form    (fm/use-form :schema schema:login-form
                              :initial initial)
 
         on-error
@@ -99,7 +87,7 @@
 
               (and (= :restriction (:type cause))
                    (= :ldap-not-initialized (:code cause)))
-              (st/emit! (msg/error (tr "errors.ldap-disabled")))
+              (st/emit! (ntf/error (tr "errors.ldap-disabled")))
 
               (and (= :restriction (:type cause))
                    (= :admin-only-profile (:code cause)))
@@ -151,16 +139,18 @@
                            :on-success on-success})]
              (st/emit! (du/login-with-ldap params)))))
 
-        on-recovery-request
+        default-recovery-req
         (mf/use-fn
-         #(st/emit! (rt/nav :auth-recovery-request)))]
+         #(st/emit! (rt/nav :auth-recovery-request)))
+
+        on-recovery-request (or on-recovery-request
+                                default-recovery-req)]
 
     [:*
      (when-let [message @error]
        [:& context-notification
-        {:type :error
+        {:level :error
          :content message
-         :data-testid "login-banner"
          :role "alert"}])
 
      [:& fm/form {:on-submit on-submit
@@ -256,7 +246,7 @@
        (tr "auth.login-with-oidc-submit")])))
 
 (mf/defc login-methods
-  [{:keys [params on-success-callback origin] :as props}]
+  [{:keys [params on-success-callback on-recovery-request origin] :as props}]
   [:*
    (when show-alt-login-buttons?
      [:*
@@ -270,7 +260,7 @@
    (when (or (contains? cf/flags :login)
              (contains? cf/flags :login-with-password)
              (contains? cf/flags :login-with-ldap))
-     [:& login-form {:params params :on-success-callback on-success-callback :origin origin}])])
+     [:& login-form {:params params :on-success-callback on-success-callback :on-recovery-request on-recovery-request :origin origin}])])
 
 (mf/defc login-page
   [{:keys [params] :as props}]
