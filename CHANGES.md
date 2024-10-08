@@ -1,10 +1,22 @@
 # CHANGELOG
 
+## 2.2.1
+
+### :bug: Bugs fixed
+
+- Fix problem with Ctrl+F shortcut on the dashboard [Taiga #8876](https://tree.taiga.io/project/penpot/issue/8876)
+- Fix visual problem with the font-size dropdown in assets [Taiga #8872](https://tree.taiga.io/project/penpot/issue/8872)
+- Add limits for invitation RPC methods (hard limit 25 emails per request)
+
 ## 2.2.0
 
 ### :rocket: Epics and highlights
 
 ### :boom: Breaking changes & Deprecations
+
+- Removed "merge assets" option when exporting ".svg + .json" files. After the components changes the option wasn't
+working properly and we're planning to change the format soon. We think it's better to deprecate the option for the
+time being.
 
 ### :heart: Community contributions (Thank you!)
 
@@ -81,6 +93,11 @@
 - Fix layer panel overflowing [Taiga #8665](https://tree.taiga.io/project/penpot/issue/8665)
 - Fix problem when creating a component instance from grid layout [Github #4881](https://github.com/penpot/penpot/issues/4881)
 - Fix problem when dismissing shared library update [Taiga #8669](https://tree.taiga.io/project/penpot/issue/8669)
+- Fix visual problem with stroke cap menu [Taiga #8730](https://tree.taiga.io/project/penpot/issue/8730)
+- Fix issue when exporting libraries when merging libraries [Taiga #8758](https://tree.taiga.io/project/penpot/issue/8758)
+- Fix problem with comments max length [Taiga #8778](https://tree.taiga.io/project/penpot/issue/8778)
+- Fix copy/paste images in Safari [Taiga #8771](https://tree.taiga.io/project/penpot/issue/8771)
+- Fix swap when the copy is the only child of a group [#5075](https://github.com/penpot/penpot/issues/5075)
 
 ## 2.1.5
 

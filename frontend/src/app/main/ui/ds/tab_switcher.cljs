@@ -111,14 +111,15 @@
    [:action-button-position {:optional true}
     [:enum "start" "end"]]
    [:default-selected {:optional true} :string]
+   [:selected {:optional true} :string]
    [:tabs [:vector {:min 1} schema:tab]]])
 
 (mf/defc tab-switcher*
   {::mf/props :obj
    ::mf/schema schema:tab-switcher}
-  [{:keys [class tabs on-change-tab default-selected action-button-position action-button] :rest props}]
-  (let [selected*        (mf/use-state #(get-selected-tab-id tabs default-selected))
-        selected         (deref selected*)
+  [{:keys [class tabs on-change-tab default-selected selected action-button-position action-button] :rest props}]
+  (let [selected*        (mf/use-state #(or selected (get-selected-tab-id tabs default-selected)))
+        selected         (or selected (deref selected*))
 
         tabs-nodes-refs  (mf/use-ref nil)
         tabs-ref         (mf/use-ref nil)
@@ -175,8 +176,7 @@
 
         class (dm/str class " " (stl/css :tabs))
 
-        props (mf/spread-props props {:class class
-                                      :on-key-down on-key-down})]
+        props (mf/spread-props props {:class class})]
 
     (mf/with-effect [tabs]
       (mf/set-ref-val! tabs-ref tabs))
@@ -188,6 +188,7 @@
                     :tabs tabs
                     :on-ref on-ref
                     :selected selected
+                    :on-key-down on-key-down
                     :on-click on-click}]]
 
      (let [active-tab (get-tab tabs selected)
