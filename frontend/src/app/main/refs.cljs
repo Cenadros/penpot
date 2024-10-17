@@ -184,6 +184,9 @@
 (def options-mode-global
   (l/derived :options-mode workspace-global))
 
+(def default-font
+  (l/derived :default-font workspace-global))
+
 (def inspect-expanded
   (l/derived :inspect-expanded workspace-local))
 
@@ -281,6 +284,9 @@
                  (dm/get-in data [:pages-index page-id])))
              st/state))
 
+(def workspace-page-flows
+  (l/derived #(-> % :flows not-empty) workspace-page))
+
 (defn workspace-page-objects-by-id
   [page-id]
   (l/derived #(wsh/lookup-page-objects % page-id) st/state =))
@@ -343,9 +349,6 @@
        (into [] (keep (d/getf objects)) children-ids)))
    workspace-page-objects =))
 
-(def workspace-page-options
-  (l/derived :options workspace-page))
-
 (def workspace-frames
   (l/derived ctt/get-frames workspace-page-objects =))
 
@@ -354,6 +357,9 @@
 
 (def workspace-editor-state
   (l/derived :workspace-editor-state st/state))
+
+(def workspace-v2-editor-state
+  (l/derived :workspace-v2-editor-state st/state))
 
 (def workspace-modifiers
   (l/derived :workspace-modifiers st/state =))

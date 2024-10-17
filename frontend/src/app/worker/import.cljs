@@ -452,22 +452,30 @@
 
 (defn import-page
   [context file [page-id page-name content]]
-  (let [nodes (->> content parser/node-seq)
-        file-id (:id file)
-        resolve (:resolve context)
+  (let [nodes     (parser/node-seq content)
+        file-id   (:id file)
+        resolve   (:resolve context)
         page-data (-> (parser/parse-page-data content)
                       (assoc :name page-name)
                       (assoc :id (resolve page-id)))
-        flows     (->> (get-in page-data [:options :flows])
-                       (mapv #(update % :starting-frame resolve)))
 
-        guides    (-> (get-in page-data [:options :guides])
-                      (update-vals #(update % :frame-id resolve)))
+        flows     (->> (get page-data :flows)
+                       (map #(update % :starting-frame resolve))
+                       (d/index-by :id)
+                       (not-empty))
 
-        page-data (-> page-data
-                      (d/assoc-in-when [:options :flows] flows)
-                      (d/assoc-in-when [:options :guides] guides))
-        file      (-> file (fb/add-page page-data))
+        guides    (-> (get page-data :guides)
+                      (update-vals #(update % :frame-id resolve))
+                      (not-empty))
+
+        page-data (cond-> page-data
+                    flows
+                    (assoc :flows flows)
+
+                    guides
+                    (assoc :guides guides))
+
+        file      (fb/add-page file page-data)
 
         ;; Preprocess nodes to parallel upload the images. Store the result in a table
         ;; old-node => node with image
@@ -809,9 +817,12 @@
                                           :errors (:errors file)
                                           :file-id (:file-id data)})))))))
                   (rx/catch (fn [cause]
-                              (log/error :hint (ex-message cause)
-                                         :file-id (:file-id data)
-                                         :cause cause)
+                              (let [data (ex-data cause)]
+                                (log/error :hint (ex-message cause)
+                                           :file-id (:file-id data))
+                                (when-let [explain (:explain data)]
+                                  (js/console.log explain)))
+
                               (rx/of {:status :import-error
                                       :file-id (:file-id data)
                                       :error (ex-message cause)

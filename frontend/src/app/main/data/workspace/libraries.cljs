@@ -48,7 +48,7 @@
    [app.util.color :as uc]
    [app.util.i18n :refer [tr]]
    [app.util.router :as rt]
-   [app.util.storage :as s]
+   [app.util.storage :as storage]
    [app.util.time :as dt]
    [beicon.v2.core :as rx]
    [cuerdas.core :as str]
@@ -152,7 +152,7 @@
     ptk/EffectEvent
     (effect [_ state _]
       (let [recent-colors (:recent-colors state)]
-        (swap! s/storage assoc :recent-colors recent-colors)))))
+        (swap! storage/user assoc :recent-colors recent-colors)))))
 
 (def clear-color-for-rename
   (ptk/reify ::clear-color-for-rename
@@ -193,9 +193,17 @@
 
 (defn rename-color
   [file-id id new-name]
-  (dm/verify! (uuid? file-id))
-  (dm/verify! (uuid? id))
-  (dm/verify! (string? new-name))
+  (dm/assert!
+   "expected valid uuid for `id`"
+   (uuid? id))
+
+  (dm/assert!
+   "expected valid uuid for `file-id`"
+   (uuid? file-id))
+
+  (dm/assert!
+   "expected valid string for `new-name`"
+   (string? new-name))
 
   (ptk/reify ::rename-color
     ptk/WatchEvent
@@ -243,8 +251,15 @@
 
 (defn rename-media
   [id new-name]
-  (dm/verify! (uuid? id))
-  (dm/verify! (string? new-name))
+
+  (dm/assert!
+   "expected valid uuid for `id`"
+   (uuid? id))
+
+  (dm/assert!
+   "expected valid string for `new-name`"
+   (string? new-name))
+
   (ptk/reify ::rename-media
     ptk/WatchEvent
     (watch [it state _]
@@ -261,8 +276,11 @@
             (rx/of (dch/commit-changes changes))))))))
 
 (defn delete-media
-  [{:keys [id] :as params}]
-  (dm/assert! (uuid? id))
+  [{:keys [id]}]
+  (dm/assert!
+   "expected valid uuid for `id`"
+   (uuid? id))
+
   (ptk/reify ::delete-media
     ev/Event
     (-data [_] {:id id})
@@ -435,8 +453,14 @@
 (defn rename-component
   "Rename the component with the given id, in the current file library."
   [id new-name]
-  (dm/verify! (uuid? id))
-  (dm/verify! (string? new-name))
+  (dm/assert!
+   "expected an uuid instance"
+   (uuid? id))
+
+  (dm/assert!
+   "expected string for new-name"
+   (string? new-name))
+
   (ptk/reify ::rename-component
     ptk/WatchEvent
     (watch [it state _]
@@ -487,8 +511,11 @@
 
 (defn delete-component
   "Delete the component with the given id, from the current file library."
-  [{:keys [id] :as params}]
-  (dm/assert! (uuid? id))
+  [{:keys [id]}]
+  (dm/assert!
+   "expected valid uuid for `id`"
+   (uuid? id))
+
   (ptk/reify ::delete-component
     ptk/WatchEvent
     (watch [it state _]
@@ -682,8 +709,15 @@
 
 (defn ext-library-changed
   [library-id modified-at revn changes]
-  (dm/assert! (uuid? library-id))
-  (dm/assert! (ch/check-changes! changes))
+
+  (dm/assert!
+   "expected valid uuid for library-id"
+   (uuid? library-id))
+
+  (dm/assert!
+   "expected valid changes vector"
+   (ch/check-changes! changes))
+
   (ptk/reify ::ext-library-changed
     ptk/UpdateEvent
     (update [_ state]
@@ -1122,7 +1156,9 @@
 (defn touch-component
   "Update the modified-at attribute of the component to now"
   [id]
-  (dm/verify! (uuid? id))
+  (dm/assert!
+   "expected valid uuid for `id`"
+   (uuid? id))
   (ptk/reify ::touch-component
     cljs.core/IDeref
     (-deref [_] [id])

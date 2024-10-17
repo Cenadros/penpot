@@ -1046,6 +1046,35 @@
         (update :pages-index update-vals update-container)
         (update :components update-vals update-container))))
 
+(defn migrate-up-55
+  "This migration moves page options to the page level"
+  [data]
+  (let [update-page
+        (fn [{:keys [options] :as page}]
+          (cond-> page
+            (and (some? (:saved-grids options))
+                 (not (contains? page :default-grids)))
+            (assoc :default-grids (:saved-grids options))
+
+            (and (some? (:background options))
+                 (not (contains? page :background)))
+            (assoc :background (:background options))
+
+            (and (some? (:flows options))
+                 (or (not (contains? page :flows))
+                     (not (map? (:flows page)))))
+            (assoc :flows (d/index-by :id (:flows options)))
+
+            (and (some? (:guides options))
+                 (not (contains? page :guides)))
+            (assoc :guides (:guides options))
+
+            (and (some? (:comment-threads-position options))
+                 (not (contains? page :comment-thread-positions)))
+            (assoc :comment-thread-positions (:comment-threads-position options))))]
+
+    (update data :pages-index d/update-vals update-page)))
+
 (def migrations
   "A vector of all applicable migrations"
   [{:id 2 :migrate-up migrate-up-2}
@@ -1091,4 +1120,5 @@
    {:id 51 :migrate-up migrate-up-51}
    {:id 52 :migrate-up migrate-up-52}
    {:id 53 :migrate-up migrate-up-26}
-   {:id 54 :migrate-up migrate-up-54}])
+   {:id 54 :migrate-up migrate-up-54}
+   {:id 55 :migrate-up migrate-up-55}])

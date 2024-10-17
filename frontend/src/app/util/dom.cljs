@@ -92,7 +92,6 @@
                       "</style>")]
     (.insertAdjacentHTML ^js node "beforeend" style)))
 
-
 (defn get-element-by-class
   ([classname]
    (dom/getElementByClass classname))
@@ -632,6 +631,11 @@
   (when (some? node)
     (.setAttribute node attr value)))
 
+(defn set-style!
+  [^js node ^string style value]
+  (when (some? node)
+    (.setProperty (.-style node) style value)))
+
 (defn remove-attribute! [^js node ^string attr]
   (when (some? node)
     (.removeAttribute node attr)))
@@ -715,6 +719,19 @@
 (defn trigger-download
   [filename blob]
   (trigger-download-uri filename (.-type ^js blob) (wapi/create-uri blob)))
+
+(defn event
+  "Create an instance of DOM Event"
+  ([^string type]
+   (js/Event. type))
+  ([^string type options]
+   (js/Event. type options)))
+
+(defn dispatch-event
+  [target event]
+  (when (some? target)
+    (.dispatchEvent ^js target event)))
+
 
 (defn save-as
   [uri filename mtype description]

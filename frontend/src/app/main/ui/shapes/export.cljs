@@ -173,7 +173,7 @@
 (mf/defc export-flows
   [{:keys [flows]}]
   [:> "penpot:flows" #js {}
-   (for [{:keys [id name starting-frame]} flows]
+   (for [{:keys [id name starting-frame]} (vals flows)]
      [:> "penpot:flow" #js {:id id
                             :name name
                             :starting-frame starting-frame}])])
@@ -187,14 +187,16 @@
                              :axis (d/name axis)}])])
 
 (mf/defc export-page
-  [{:keys [id options]}]
-  (let [saved-grids (get options :saved-grids)
-        flows       (get options :flows)
-        guides      (get options :guides)]
+  {::mf/props :obj}
+  [{:keys [page]}]
+  (let [id     (get page :id)
+        grids  (get page :grids)
+        flows  (get page :flows)
+        guides (get page :guides)]
     [:> "penpot:page" #js {:id id}
-     (when (d/not-empty? saved-grids)
+     (when (d/not-empty? grids)
        (let [parse-grid (fn [[type params]] {:type type :params params})
-             grids (->> saved-grids (mapv parse-grid))]
+             grids (mapv parse-grid grids)]
          [:& export-grid-data {:grids grids}]))
 
      (when (d/not-empty? flows)

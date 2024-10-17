@@ -24,7 +24,7 @@
    [app.main.data.workspace.state-helpers :as wsh]
    [app.main.data.workspace.texts :as dwt]
    [app.main.data.workspace.undo :as dwu]
-   [app.util.storage :refer [storage]]
+   [app.util.storage :as storage]
    [beicon.v2.core :as rx]
    [cuerdas.core :as str]
    [potok.v2.core :as ptk]))
@@ -465,16 +465,16 @@
 (defn change-color-in-selected
   [operations new-color old-color]
 
-  (dm/verify!
-   "expected valid change color operations"
+  (dm/assert!
+   "expected valid color operations"
    (check-change-color-operations! operations))
 
-  (dm/verify!
-   "expected a valid color struct for new-color param"
+  (dm/assert!
+   "expected valid color structure"
    (ctc/check-color! new-color))
 
-  (dm/verify!
-   "expected a valid color struct for old-color param"
+  (dm/assert!
+   "expected valid color structure"
    (ctc/check-color! old-color))
 
   (ptk/reify ::change-color-in-selected
@@ -498,7 +498,7 @@
   [color stroke?]
 
   (dm/assert!
-   "should be a valid color"
+   "expected valid color structure"
    (ctc/check-color! color))
 
   (ptk/reify ::apply-color-from-palette
@@ -815,9 +815,9 @@
 
 (defn get-active-color-tab
   []
-  (let [tab (::tab @storage)]
+  (let [tab (::tab storage/user)]
     (or tab :ramp)))
 
 (defn set-active-color-tab!
   [tab]
-  (swap! storage assoc ::tab tab))
+  (swap! storage/user assoc ::tab tab))

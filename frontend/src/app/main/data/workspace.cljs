@@ -42,6 +42,7 @@
    [app.main.data.modal :as modal]
    [app.main.data.notifications :as ntf]
    [app.main.data.persistence :as dps]
+   [app.main.data.plugins :as dp]
    [app.main.data.users :as du]
    [app.main.data.workspace.bool :as dwb]
    [app.main.data.workspace.collapse :as dwco]
@@ -74,16 +75,18 @@
    [app.main.repo :as rp]
    [app.main.streams :as ms]
    [app.main.worker :as uw]
+   [app.renderer-v2 :as renderer]
    [app.util.dom :as dom]
    [app.util.globals :as ug]
    [app.util.http :as http]
    [app.util.i18n :as i18n :refer [tr]]
    [app.util.router :as rt]
-   [app.util.storage :refer [storage]]
+   [app.util.storage :as storage]
    [app.util.timers :as tm]
    [app.util.webapi :as wapi]
    [beicon.v2.core :as rx]
    [cljs.spec.alpha :as s]
+   [clojure.set :as set]
    [cuerdas.core :as str]
    [potok.v2.core :as ptk]
    [promesa.core :as p]))
@@ -130,6 +133,7 @@
        (when (and (not (boolean (-> state :profile :props :v2-info-shown)))
                   (features/active-feature? state "components/v2"))
          (modal/show :v2-info {}))
+       (dp/check-open-plugin)
        (fdf/fix-deleted-fonts)
        (fbs/fix-broken-shapes)))))
 
@@ -337,7 +341,7 @@
     ptk/UpdateEvent
     (update [_ state]
       (assoc state
-             :recent-colors (:recent-colors @storage)
+             :recent-colors (:recent-colors storage/user)
              :workspace-ready? false
              :current-file-id file-id
              :current-project-id project-id
@@ -352,6 +356,9 @@
                 (features/initialize)
                 (dcm/retrieve-comment-threads file-id)
                 (fetch-bundle project-id file-id))
+
+         (when (contains? cf/flags :renderer-v2)
+           (rx/of (renderer/init)))
 
          (->> stream
               (rx/filter dch/commit?)
@@ -565,7 +572,7 @@
     (watch [it state _]
       (let [page    (get-in state [:workspace-data :pages-index id])
             changes (-> (pcb/empty-changes it)
-                        (pcb/mod-page page name))]
+                        (pcb/mod-page page {:name name}))]
 
         (rx/of (dch/commit-changes changes))))))
 
@@ -595,7 +602,7 @@
              (-> (pcb/empty-changes it)
                  (pcb/with-file-data file-data)
                  (assoc :file-id file-id)
-                 (pcb/mod-plugin-data type id page-id namespace key value))]
+                 (pcb/set-plugin-data type id page-id namespace key value))]
          (rx/of (dch/commit-changes changes)))))))
 
 (declare purge-page)
@@ -971,25 +978,27 @@
     (map #(gal/align-to-rect % rect axis) selected-objs)))
 
 (defn align-objects
-  [axis]
-  (dm/assert!
-   "expected valid align axis value"
-   (contains? gal/valid-align-axis axis))
+  ([axis]
+   (align-objects axis nil))
+  ([axis selected]
+   (dm/assert!
+    "expected valid align axis value"
+    (contains? gal/valid-align-axis axis))
 
-  (ptk/reify ::align-objects
-    ptk/WatchEvent
-    (watch [_ state _]
-      (let [objects  (wsh/lookup-page-objects state)
-            selected (wsh/lookup-selected state)
-            moved    (if (= 1 (count selected))
-                       (align-object-to-parent objects (first selected) axis)
-                       (align-objects-list objects selected axis))
-            undo-id (js/Symbol)]
-        (when (can-align? selected objects)
-          (rx/of (dwu/start-undo-transaction undo-id)
-                 (dwt/position-shapes moved)
-                 (ptk/data-event :layout/update {:ids selected})
-                 (dwu/commit-undo-transaction undo-id)))))))
+   (ptk/reify ::align-objects
+     ptk/WatchEvent
+     (watch [_ state _]
+       (let [objects  (wsh/lookup-page-objects state)
+             selected (or selected (wsh/lookup-selected state))
+             moved    (if (= 1 (count selected))
+                        (align-object-to-parent objects (first selected) axis)
+                        (align-objects-list objects selected axis))
+             undo-id (js/Symbol)]
+         (when (can-align? selected objects)
+           (rx/of (dwu/start-undo-transaction undo-id)
+                  (dwt/position-shapes moved)
+                  (ptk/data-event :layout/update {:ids selected})
+                  (dwu/commit-undo-transaction undo-id))))))))
 
 (defn can-distribute? [selected]
   (cond
@@ -998,25 +1007,27 @@
     :else true))
 
 (defn distribute-objects
-  [axis]
-  (dm/assert!
-   "expected valid distribute axis value"
-   (contains? gal/valid-dist-axis axis))
+  ([axis]
+   (distribute-objects axis nil))
+  ([axis ids]
+   (dm/assert!
+    "expected valid distribute axis value"
+    (contains? gal/valid-dist-axis axis))
 
-  (ptk/reify ::distribute-objects
-    ptk/WatchEvent
-    (watch [_ state _]
-      (let [page-id   (:current-page-id state)
-            objects   (wsh/lookup-page-objects state page-id)
-            selected  (wsh/lookup-selected state)
-            moved     (-> (map #(get objects %) selected)
-                          (gal/distribute-space axis))
-            undo-id  (js/Symbol)]
-        (when (can-distribute? selected)
-          (rx/of (dwu/start-undo-transaction undo-id)
-                 (dwt/position-shapes moved)
-                 (ptk/data-event :layout/update {:ids selected})
-                 (dwu/commit-undo-transaction undo-id)))))))
+   (ptk/reify ::distribute-objects
+     ptk/WatchEvent
+     (watch [_ state _]
+       (let [page-id   (:current-page-id state)
+             objects   (wsh/lookup-page-objects state page-id)
+             selected  (or ids (wsh/lookup-selected state))
+             moved     (-> (map #(get objects %) selected)
+                           (gal/distribute-space axis))
+             undo-id  (js/Symbol)]
+         (when (can-distribute? selected)
+           (rx/of (dwu/start-undo-transaction undo-id)
+                  (dwt/position-shapes moved)
+                  (ptk/data-event :layout/update {:ids selected})
+                  (dwu/commit-undo-transaction undo-id))))))))
 
 ;; --- Shape Proportions
 
@@ -1535,7 +1546,8 @@
             (let [objects  (wsh/lookup-page-objects state)
                   selected (->> (wsh/lookup-selected state)
                                 (cfh/clean-loops objects))
-                  features (features/get-team-enabled-features state)
+                  features (-> (features/get-team-enabled-features state)
+                               (set/difference cfeat/frontend-only-features))
 
                   file-id  (:current-file-id state)
                   frame-id (cfh/common-parent-frame objects selected)
@@ -1702,17 +1714,19 @@
 
 (def ^:private
   schema:paste-data
-  (sm/define
-    [:map {:title "paste-data"}
-     [:type [:= :copied-shapes]]
-     [:features ::sm/set-of-strings]
-     [:version :int]
-     [:file-id ::sm/uuid]
-     [:selected ::sm/set-of-uuid]
-     [:objects
-      [:map-of ::sm/uuid :map]]
-     [:images [:set :map]]
-     [:position {:optional true} ::gpt/point]]))
+  [:map {:title "paste-data"}
+   [:type [:= :copied-shapes]]
+   [:features ::sm/set-of-strings]
+   [:version :int]
+   [:file-id ::sm/uuid]
+   [:selected ::sm/set-of-uuid]
+   [:objects
+    [:map-of ::sm/uuid :map]]
+   [:images [:set :map]]
+   [:position {:optional true} ::gpt/point]])
+
+(def paste-data-valid?
+  (sm/lazy-validator schema:paste-data))
 
 (defn- paste-transit
   [{:keys [images] :as pdata}]
@@ -1737,9 +1751,10 @@
         (let [file-id (:current-file-id state)
               features (features/get-team-enabled-features state)]
 
-          (sm/validate! schema:paste-data pdata
-                        {:hint "invalid paste data"
-                         :code :invalid-paste-data})
+          (when-not (paste-data-valid? pdata)
+            (ex/raise :type :validation
+                      :code :invalid-paste-data
+                      :hibt "invalid paste data found"))
 
           (cfeat/check-paste-features! features (:features pdata))
           (if (= file-id (:file-id pdata))
@@ -2088,7 +2103,7 @@
              page    (wsh/lookup-page state page-id)
              changes (-> (pcb/empty-changes it)
                          (pcb/with-page page)
-                         (pcb/set-page-option :background (:color color)))]
+                         (pcb/mod-page {:background (:color color)}))]
          (rx/of (dch/commit-changes changes)))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
