@@ -1,5 +1,33 @@
 # CHANGELOG
 
+## 2.4.3
+
+### :bug: Bugs fixed
+
+- Fix errors from editable select on measures menu [Taiga #9888](https://tree.taiga.io/project/penpot/issue/9888)
+- Fix exception on importing some templates from templates slider
+- Consolidate adding share button to workspace
+- Fix problem when pasting text [Taiga #9929](https://tree.taiga.io/project/penpot/issue/9929)
+- Fix incorrect media reference handling on component instantiation
+
+
+## 2.4.2
+
+### :bug: Bugs fixed
+
+- Fix detach when top copy is dangling and nested copy is not [Taiga #9699](https://tree.taiga.io/project/penpot/issue/9699)
+- Fix problem in plugins with `replaceColor` method [#174](https://github.com/penpot/penpot-plugins/issues/174)
+- Fix issue with recursive commponents [Taiga #9903](https://tree.taiga.io/project/penpot/issue/9903)
+- Fix missing methods reference on API Docs
+- Fix memory usage issue on file-gc asynchronous task (related to snapshots feature)
+
+## 2.4.1
+
+### :bug: Bugs fixed
+
+- Fix error when importing files with touched components [Taiga #9625](https://tree.taiga.io/project/penpot/issue/9625)
+- Fix problem when changing color libraries [Plugins #184](https://github.com/penpot/penpot-plugins/issues/184)
+
 ## 2.4.0
 
 ### :rocket: Epics and highlights
@@ -11,24 +39,28 @@
   (penpot). Because of that, the default NGINX listen port is now 8080 instead of 80, so
   you will have to modify your infrastructure to apply this change.
 
-- Redis 7.2 is explicitly pinned in our example docker-compose.yml file. This is done because, 
-  starting with the next versions, Redis is no longer distributed under an open-source license. 
-  On-premise users are obviously free to upgrade to the version they are using or a more modern one. 
-  Keep in mind that if you were using a version other than 7.2, you may have to recreate the volume 
-  associated with the Redis container because the 7.2 storage format may not be compatible with what 
-  you already have stored on the volume, and Redis may not start. In the near future, we will evaluate 
+- Redis 7.2 is explicitly pinned in our example docker-compose.yml file. This is done because,
+  starting with the next versions, Redis is no longer distributed under an open-source license.
+  On-premise users are obviously free to upgrade to the version they are using or a more modern one.
+  Keep in mind that if you were using a version other than 7.2, you may have to recreate the volume
+  associated with the Redis container because the 7.2 storage format may not be compatible with what
+  you already have stored on the volume, and Redis may not start. In the near future, we will evaluate
   whether to move to an open-source version of Redis (such as https://valkey.io/).
 
 ### :heart: Community contributions (Thank you!)
 
 ### :sparkles: New features
 
-- Viewer role for team members  [Taiga #1056 & #6590](https://tree.taiga.io/project/penpot/us/1056 & https://tree.taiga.io/project/penpot/us/6590)
-- File history versions management [Taiga](https://tree.taiga.io/project/penpot/us/187?milestone=411120)
+- Viewer role for team members [Taiga #1056](https://tree.taiga.io/project/penpot/us/1056) & [Taiga #6590](https://tree.taiga.io/project/penpot/us/6590)
+- File history versions management [Taiga #187](https://tree.taiga.io/project/penpot/us/187?milestone=411120)
 - Rename selected layer via keyboard shortcut and context menu option [Taiga #8882](https://tree.taiga.io/project/penpot/us/8882)
+- New .penpot file format [Taiga #8657](https://tree.taiga.io/project/penpot/us/8657)
 
 ### :bug: Bugs fixed
 
+- Fix problem with some texts desynchronization [Taiga #9379](https://tree.taiga.io/project/penpot/issue/9379)
+- Fix problem with reoder grid layers [#5446](https://github.com/penpot/penpot/issues/5446)
+- Fix problem with swap component style [#9542](https://tree.taiga.io/project/penpot/issue/9542)
 
 ## 2.3.3
 

@@ -50,8 +50,7 @@
              " where file_id=? and tag=? and deleted_at is null")
         res (db/exec! conn [sql file-id tag])]
     (->> res
-         (d/index-by :object-id (fn [row]
-                                  (files/resolve-public-uri (:media-id row))))
+         (d/index-by :object-id :media-id)
          (d/without-nils))))
 
 (defn- get-object-thumbnails
@@ -62,8 +61,7 @@
               " where file_id=? and deleted_at is null")
          res (db/exec! conn [sql file-id])]
      (->> res
-          (d/index-by :object-id (fn [row]
-                                   (files/resolve-public-uri (:media-id row))))
+          (d/index-by :object-id :media-id)
           (d/without-nils))))
 
   ([conn file-id object-ids]
@@ -75,8 +73,7 @@
          res (db/exec! conn [sql file-id ids])]
 
      (->> res
-          (d/index-by :object-id (fn [row]
-                                   (files/resolve-public-uri (:media-id row))))
+          (d/index-by :object-id :media-id)
           (d/without-nils)))))
 
 (sv/defmethod ::get-file-object-thumbnails
@@ -127,8 +124,11 @@
               (if-let [frame  (-> frames first)]
                 (let [frame-id  (:id frame)
                       object-id (thc/fmt-object-id (:id file) page-id frame-id "frame")
-                      frame     (if-let [thumb (get thumbnails object-id)]
-                                  (assoc frame :thumbnail thumb :shapes [])
+
+                      frame     (if-let [media-id (get thumbnails object-id)]
+                                  (-> frame
+                                      (assoc :thumbnail-id media-id)
+                                      (assoc :shapes []))
                                   (dissoc frame :thumbnail))
 
                       children-ids
@@ -402,7 +402,10 @@
 
   [cfg {:keys [::rpc/profile-id file-id] :as params}]
   (db/tx-run! cfg (fn [{:keys [::db/conn] :as cfg}]
-                    (files/check-edition-permissions! conn profile-id file-id)
+                    ;; TODO For now we check read permissions instead of write,
+                    ;; to allow viewer users to update thumbnails. We might
+                    ;; review this approach on the future.
+                    (files/check-read-permissions! conn profile-id file-id)
                     (when-not (db/read-only? conn)
                       (let [media (create-file-thumbnail! cfg params)]
                         {:uri (files/resolve-public-uri (:id media))

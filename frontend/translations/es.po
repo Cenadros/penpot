@@ -394,6 +394,10 @@ msgstr "El token expirará el %s"
 msgid "dashboard.access-tokens.token-will-not-expire"
 msgstr "El token no tiene fecha de expiración"
 
+#: src/app/main/ui/dashboard/placeholder.cljs:48
+msgid "dashboard.add-file"
+msgstr "Añadir archivo"
+
 #: src/app/main/ui/dashboard/file_menu.cljs:311, src/app/main/ui/workspace/main_menu.cljs:585
 msgid "dashboard.add-shared"
 msgstr "Añadir como Biblioteca Compartida"
@@ -401,6 +405,9 @@ msgstr "Añadir como Biblioteca Compartida"
 #: src/app/main/ui/workspace/main_menu.cljs:607
 msgid "dashboard.show-version-history"
 msgstr "Histórico de versiones"
+
+msgid "dashboard.create-version-menu"
+msgstr "Guardar esta versión"
 
 #: src/app/main/ui/settings/profile.cljs:72
 msgid "dashboard.change-email"
@@ -1567,6 +1574,9 @@ msgstr "Activo"
 #, unused
 msgid "labels.add"
 msgstr "Añadir"
+
+msgid "labels.adding"
+msgstr "Añadiendo..."
 
 #: src/app/main/ui/dashboard/fonts.cljs:176
 msgid "labels.add-custom-font"
@@ -3622,6 +3632,9 @@ msgstr "Tablero anterior"
 msgid "shortcuts.redo"
 msgstr "Rehacer"
 
+msgid "shortcuts.rename"
+msgstr "Renombrar"
+
 #: src/app/main/ui/workspace/sidebar/shortcuts.cljs:166
 msgid "shortcuts.reset-zoom"
 msgstr "Reiniciar zoom"
@@ -4054,6 +4067,9 @@ msgstr "Nombre del grupo"
 #: src/app/main/ui/workspace/sidebar/assets.cljs:163
 msgid "workspace.assets.libraries"
 msgstr "Bibliotecas"
+
+msgid "workspace.assets.add-library"
+msgstr "Añadir biblioteca"
 
 #: src/app/main/ui/workspace/sidebar/assets/components.cljs:523
 msgid "workspace.assets.list-view"
@@ -4585,6 +4601,15 @@ msgstr "ver todos los cambios"
 #: src/app/main/ui/workspace/libraries.cljs:524
 msgid "workspace.libraries.updates"
 msgstr "ACTUALIZACIONES"
+
+msgid "workspace.libraries.empty.no-libraries"
+msgstr "No hay Biblioteacas Compartidas en tu equipo, puedes buscar"
+
+msgid "workspace.libraries.empty.some-templates"
+msgstr "algunas plantillas aquí"
+
+msgid "workspace.libraries.empty.add-some"
+msgstr "O añadir algunas de éstas para probar:"
 
 #: src/app/main/ui/workspace/sidebar/options/menus/interactions.cljs:745
 msgid "workspace.options.add-interaction"
@@ -6106,7 +6131,7 @@ msgstr "Abrir barra lateral"
 
 #: src/app/main/ui/workspace/right_header.cljs:246, src/app/main/ui/workspace/right_header.cljs:247
 msgid "workspace.sidebar.history"
-msgstr "Historial (%s)"
+msgstr "Historial"
 
 #: src/app/main/ui/workspace/sidebar/layers.cljs:524, src/app/main/ui/workspace/sidebar.cljs:110, src/app/main/ui/workspace/sidebar.cljs:114, src/app/main/ui/workspace/sidebar.cljs:123
 msgid "workspace.sidebar.layers"
@@ -6549,6 +6574,13 @@ msgstr "Cargando..."
 msgid "workspace.versions.restore-warning"
 msgstr "¿Quieres restaurar esta versión?"
 
+msgid "workspace.versions.warning.text"
+msgstr "Los autoguardados duran %s días."
+
+#, markdown
+msgid "workspace.versions.warning.subtext"
+msgstr "Si quieres aumentar este límite, contáctanos en [support@penpot.app](%s)"
+
 #: src/app/main/ui/workspace/sidebar/versions.cljs:207
 msgid "workspace.versions.snapshot-menu"
 msgstr "Abrir menu de versiones"
@@ -6560,3 +6592,9 @@ msgstr "Abrir menu de versiones"
 #, unused
 msgid "workspace.viewport.click-to-close-path"
 msgstr "Pulsar para cerrar la ruta"
+
+msgid "workspace.versions.tab.history"
+msgstr "Histórico"
+
+msgid "workspace.versions.tab.actions"
+msgstr "Acciones"

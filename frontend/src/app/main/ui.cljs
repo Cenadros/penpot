@@ -67,6 +67,7 @@
 
         show-release-modal?
         (and (contains? cf/flags :onboarding)
+             (not (contains? cf/flags :hide-release-modal))
              (:onboarding-viewed props)
              (not= (:release-notes-viewed props) (:main cf/version))
              (not= "0.0" (:main cf/version)))]
@@ -106,7 +107,7 @@
         :dashboard-team-webhooks
         :dashboard-team-settings)
        [:?
-        #_[:& app.main.ui.releases/release-notes-modal {:version "2.3"}]
+        #_[:& app.main.ui.releases/release-notes-modal {:version "2.4"}]
         #_[:& app.main.ui.onboarding/onboarding-templates-modal]
         #_[:& app.main.ui.onboarding/onboarding-modal]
         #_[:& app.main.ui.onboarding.team-choice/onboarding-team-modal]

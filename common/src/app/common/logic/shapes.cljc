@@ -304,7 +304,9 @@
                 (->> ids
                      (mapcat #(ctn/get-child-heads objects %))
                      (map :id)))
-        cell (or cell (ctl/get-cell-by-index parent to-index))]
+
+        index-cell-data  (when to-index (ctl/get-cell-by-index parent to-index))
+        cell (or cell (and index-cell-data [(:row index-cell-data) (:column index-cell-data)]))]
 
     (-> changes
         (pcb/with-page-id page-id)
@@ -409,12 +411,14 @@
         ;; Resize parent containers that need to
         (pcb/resize-parents parents))))
 
-(defn change-show-in-viewer [shape hide?]
+(defn change-show-in-viewer
+  [shape hide?]
   (assoc shape :hide-in-viewer hide?))
 
-(defn add-new-interaction [shape interaction]
-  (-> shape
-      (update :interactions ctsi/add-interaction interaction)))
+(defn add-new-interaction
+  [shape interaction]
+  (update shape :interactions ctsi/add-interaction interaction))
 
-(defn show-in-viewer [shape]
+(defn show-in-viewer
+  [shape]
   (dissoc shape :hide-in-viewer))

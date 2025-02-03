@@ -154,6 +154,7 @@
    [:main-instance {:optional true} :boolean]
    [:remote-synced {:optional true} :boolean]
    [:shape-ref {:optional true} ::sm/uuid]
+   [:touched {:optional true} [:maybe [:set :keyword]]]
    [:blocked {:optional true} :boolean]
    [:collapsed {:optional true} :boolean]
    [:locked {:optional true} :boolean]

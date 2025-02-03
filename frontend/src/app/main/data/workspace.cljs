@@ -65,6 +65,7 @@
    [app.main.data.workspace.shape-layout :as dwsl]
    [app.main.data.workspace.shapes :as dwsh]
    [app.main.data.workspace.state-helpers :as wsh]
+   [app.main.data.workspace.texts :as dwtxt]
    [app.main.data.workspace.thumbnails :as dwth]
    [app.main.data.workspace.transforms :as dwt]
    [app.main.data.workspace.undo :as dwu]
@@ -83,6 +84,7 @@
    [app.util.i18n :as i18n :refer [tr]]
    [app.util.router :as rt]
    [app.util.storage :as storage]
+   [app.util.text.content :as tc]
    [app.util.timers :as tm]
    [app.util.webapi :as wapi]
    [beicon.v2.core :as rx]
@@ -199,18 +201,21 @@
 
                ;; Load libraries
                (->> (rp/cmd! :get-file-libraries {:file-id file-id})
-                    (rx/mapcat identity)
-                    (rx/merge-map
-                     (fn [{:keys [id synced-at]}]
-                       (->> (rp/cmd! :get-file {:id id :features features})
-                            (rx/map #(assoc % :synced-at synced-at)))))
-                    (rx/merge-map fpmap/resolve-file)
-                    (rx/merge-map
-                     (fn [{:keys [id] :as file}]
-                       (->> (rp/cmd! :get-file-object-thumbnails {:file-id id :tag "component"})
-                            (rx/map #(assoc file :thumbnails %)))))
-                    (rx/reduce conj [])
-                    (rx/map libraries-fetched)))
+                    (rx/mapcat (fn [libraries]
+                                 (rx/merge
+                                  (->> (rx/from libraries)
+                                       (rx/merge-map
+                                        (fn [{:keys [id synced-at]}]
+                                          (->> (rp/cmd! :get-file {:id id :features features})
+                                               (rx/map #(assoc % :synced-at synced-at)))))
+                                       (rx/merge-map fpmap/resolve-file)
+                                       (rx/reduce conj [])
+                                       (rx/map libraries-fetched))
+                                  (->> (rx/from libraries)
+                                       (rx/map :id)
+                                       (rx/mapcat (fn [file-id]
+                                                    (rp/cmd! :get-file-object-thumbnails {:file-id file-id :tag "component"})))
+                                       (rx/map dwl/library-thumbnails-fetched)))))))
 
               (rx/of (with-meta (workspace-initialized)
                        {:file-id file-id})))
@@ -1636,6 +1641,7 @@
                      (rx/ignore))))))))))
 
 (declare ^:private paste-transit)
+(declare ^:private paste-html-text)
 (declare ^:private paste-text)
 (declare ^:private paste-image)
 (declare ^:private paste-svg-text)
@@ -1703,6 +1709,7 @@
           (let [pdata        (wapi/read-from-paste-event event)
                 image-data   (some-> pdata wapi/extract-images)
                 text-data    (some-> pdata wapi/extract-text)
+                html-data    (some-> pdata wapi/extract-html-text)
                 transit-data (ex/ignoring (some-> text-data t/decode-str))]
             (cond
               (and (string? text-data) (re-find #"<svg\s" text-data))
@@ -1715,7 +1722,10 @@
               (coll? transit-data)
               (rx/of (paste-transit (assoc transit-data :in-viewport in-viewport?)))
 
-              (string? text-data)
+              (and (string? html-data) (d/not-empty? html-data))
+              (rx/of (paste-html-text html-data text-data))
+
+              (and (string? text-data) (d/not-empty? text-data))
               (rx/of (paste-text text-data))
 
               :else
@@ -2013,6 +2023,8 @@
                                 (map :id)
                                 (pcb/resize-parents changes))
 
+              orig-shapes  (map (d/getf all-objects) selected)
+
               selected     (into (d/ordered-set)
                                  (comp
                                   (filter add-obj?)
@@ -2025,13 +2037,22 @@
                              (some? drop-cell)
                              (pcb/update-shapes [parent-id]
                                                 #(ctl/add-children-to-cell % selected all-objects drop-cell)))
+
               undo-id      (js/Symbol)]
 
-          (rx/of (dwu/start-undo-transaction undo-id)
-                 (dch/commit-changes changes)
-                 (dws/select-shapes selected)
-                 (ptk/data-event :layout/update {:ids [frame-id]})
-                 (dwu/commit-undo-transaction undo-id)))))))
+          (rx/concat
+           (->> (filter ctk/instance-head? orig-shapes)
+                (map (fn [{:keys [component-file]}]
+                       (ptk/event ::ev/event
+                                  {::ev/name "use-library-component"
+                                   ::ev/origin "paste"
+                                   :external-library (not= file-id component-file)})))
+                (rx/from))
+           (rx/of (dwu/start-undo-transaction undo-id)
+                  (dch/commit-changes changes)
+                  (dws/select-shapes selected)
+                  (ptk/data-event :layout/update {:ids [frame-id]})
+                  (dwu/commit-undo-transaction undo-id))))))))
 
 (defn as-content [text]
   (let [paragraphs (->> (str/lines text)
@@ -2055,6 +2076,34 @@
 
     :else
     (deref ms/mouse-position)))
+
+(defn- paste-html-text
+  [html text]
+  (dm/assert! (string? html))
+  (ptk/reify ::paste-html-text
+    ptk/WatchEvent
+    (watch [_ state  _]
+      (let [root (dwtxt/create-root-from-html html)
+            content (tc/dom->cljs root)
+
+            id (uuid/next)
+            width (max 8 (min (* 7 (count text)) 700))
+            height 16
+            {:keys [x y]} (calculate-paste-position state)
+
+            shape {:id id
+                   :type :text
+                   :name (txt/generate-shape-name text)
+                   :x x
+                   :y y
+                   :width width
+                   :height height
+                   :grow-type (if (> (count text) 100) :auto-height :auto-width)
+                   :content content}
+            undo-id (js/Symbol)]
+        (rx/of (dwu/start-undo-transaction undo-id)
+               (dwsh/create-and-add-shape :text x y shape)
+               (dwu/commit-undo-transaction undo-id))))))
 
 (defn- paste-text
   [text]

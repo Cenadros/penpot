@@ -6,13 +6,38 @@
  * Copyright (c) KALEIDOS INC
  */
 
-import { createInline } from "./Inline.js";
+import { createInline, isLikeInline } from "./Inline.js";
 import {
   createEmptyParagraph,
   createParagraph,
   isLikeParagraph,
 } from "./Paragraph.js";
 import { isDisplayBlock, normalizeStyles } from "./Style.js";
+
+/**
+ * Returns if the content fragment should be treated as
+ * inline content and not a paragraphed one.
+ *
+ * @returns {boolean}
+ */
+function isContentFragmentFromDocumentInline(document) {
+  const nodeIterator = document.createNodeIterator(
+    document.documentElement,
+    NodeFilter.SHOW_ELEMENT,
+  );
+  let currentNode = nodeIterator.nextNode();
+  while (currentNode) {
+    if (["HTML", "HEAD", "BODY"].includes(currentNode.nodeName)) {
+      currentNode = nodeIterator.nextNode();
+      continue;
+    }
+
+    if (!isLikeInline(currentNode)) return false;
+
+    currentNode = nodeIterator.nextNode();
+  }
+  return true;
+}
 
 /**
  * Maps any HTML into a valid content DOM element.
@@ -49,14 +74,22 @@ export function mapContentFragmentFromDocument(document, root, styleDefaults) {
       }
     }
 
-    currentParagraph.appendChild(
-      createInline(new Text(currentNode.nodeValue), currentStyle)
-    );
+    const inline = createInline(new Text(currentNode.nodeValue), currentStyle);
+    const fontSize = inline.style.getPropertyValue("font-size");
+    if (!fontSize) console.warn("font-size", fontSize);
+    currentParagraph.appendChild(inline);
 
     currentNode = nodeIterator.nextNode();
   }
 
   fragment.appendChild(currentParagraph);
+  if (fragment.children.length === 1) {
+    const isContentInline = isContentFragmentFromDocumentInline(document);
+    if (isContentInline) {
+      currentParagraph.dataset.inline = "force";
+    }
+  }
+
   return fragment;
 }
 

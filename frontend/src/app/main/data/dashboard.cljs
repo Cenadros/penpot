@@ -450,7 +450,9 @@
   (ptk/reify ::update-team
     ptk/UpdateEvent
     (update [_ state]
-      (assoc-in state [:teams id :name] name))
+      (-> state
+          (assoc-in [:teams id :name] name)
+          (assoc-in [:team :name] name)))
 
     ptk/WatchEvent
     (watch [_ _ _]
@@ -951,6 +953,7 @@
 (defn create-file
   [{:keys [project-id name] :as params}]
   (dm/assert! (uuid? project-id))
+
   (ptk/reify ::create-file
     ev/Event
     (-data [_] {:project-id project-id})
@@ -1120,6 +1123,7 @@
    (ptk/reify ::go-to-projects-1
      ptk/UpdateEvent
      (update [_ state]
+       ;; FIXME: Remove on 2.5
        (assoc state :current-team-id team-id))
      ptk/WatchEvent
      (watch [_ _ _]

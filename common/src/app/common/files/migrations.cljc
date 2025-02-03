@@ -25,6 +25,7 @@
    [app.common.text :as txt]
    [app.common.types.color :as ctc]
    [app.common.types.component :as ctk]
+   [app.common.types.container :as ctn]
    [app.common.types.file :as ctf]
    [app.common.types.shape :as cts]
    [app.common.types.shape.shadow :as ctss]
@@ -1130,6 +1131,72 @@
         (update :pages-index dissoc nil)
         (update :pages-index update-vals update-page))))
 
+(defn migrate-up-59
+  [data]
+  (letfn [(fix-touched [elem]
+            (cond-> elem (string? elem) keyword))
+
+          (update-shape [shape]
+            (d/update-when shape :touched #(into #{} (map fix-touched) %)))
+
+          (update-container [container]
+            (d/update-when container :objects update-vals update-shape))]
+
+    (-> data
+        (update :pages-index update-vals update-container)
+        (update :components update-vals update-container))))
+
+(defn migrate-up-62
+  [data]
+  (let [xform-cycles-ids
+        (comp (filter #(= (:id %) (:shape-ref %)))
+              (map :id))
+
+        remove-cycles
+        (fn [objects]
+          (let [cycles-ids (into #{} xform-cycles-ids (vals objects))
+                to-detach  (->> cycles-ids
+                                (map #(get objects %))
+                                (map #(ctn/get-head-shape objects %))
+                                (map :id)
+                                distinct
+                                (mapcat #(ctn/get-children-in-instance objects %))
+                                (map :id)
+                                set)]
+
+            (reduce-kv (fn [objects id shape]
+                         (if (contains? to-detach id)
+                           (assoc objects id (ctk/detach-shape shape))
+                           objects))
+                       objects
+                       objects)))
+
+        update-component
+        (fn [component]
+          ;; we only have encounter this on deleted components,
+          ;; so the relevant objects are inside the component
+          (d/update-when component :objects remove-cycles))]
+
+    (update data :components update-vals update-component)))
+
+(defn migrate-up-65
+  [data]
+  (let [update-object
+        (fn [object]
+          (d/update-when object :plugin-data d/without-nils))
+
+        update-page
+        (fn [page]
+          (-> (update-object page)
+              (update :objects update-vals update-object)))]
+
+    (-> data
+        (update-object)
+        (d/update-when :pages-index update-vals update-page)
+        (d/update-when :colors update-vals update-object)
+        (d/update-when :typographies update-vals update-object)
+        (d/update-when :components update-vals update-object))))
+
 (def migrations
   "A vector of all applicable migrations"
   [{:id 2 :migrate-up migrate-up-2}
@@ -1178,5 +1245,7 @@
    {:id 54 :migrate-up migrate-up-54}
    {:id 55 :migrate-up migrate-up-55}
    {:id 56 :migrate-up migrate-up-56}
-   {:id 57 :migrate-up migrate-up-57}])
-
+   {:id 57 :migrate-up migrate-up-57}
+   {:id 59 :migrate-up migrate-up-59}
+   {:id 62 :migrate-up migrate-up-62}
+   {:id 65 :migrate-up migrate-up-65}])

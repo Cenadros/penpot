@@ -7,7 +7,6 @@
 (ns app.main.ui.workspace.right-header
   (:require-macros [app.main.style :as stl])
   (:require
-   [app.config :as cf]
    [app.main.data.events :as ev]
    [app.main.data.modal :as modal]
    [app.main.data.shortcuts :as scd]
@@ -243,14 +242,14 @@
      (when-not ^boolean read-only?
        [:div {:class (stl/css :history-section)}
         [:button
-         {:title (tr "workspace.sidebar.history" (sc/get-tooltip :toggle-history))
-          :aria-label (tr "workspace.sidebar.history" (sc/get-tooltip :toggle-history))
+         {:title (tr "workspace.sidebar.history")
+          :aria-label (tr "workspace.sidebar.history")
           :class (stl/css-case :selected (contains? layout :document-history)
                                :history-button true)
           :on-click toggle-history}
          i/history]])
 
-     (when (cf/external-feature-flag "share-01" "test")
+     (when  (not (:is-default team))
        [:a {:class (stl/css :viewer-btn)
             :title (tr "workspace.header.share")
             :on-click open-share-dialog}

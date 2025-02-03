@@ -191,6 +191,25 @@
       (watch [it state _]
         (update-color* it state color file-id)))))
 
+(defn update-color-data
+  "Update color data without affecting the path location"
+  [color file-id]
+  (let [color (d/without-nils color)]
+
+    (dm/assert!
+     "expected valid color data structure"
+     (ctc/check-color! color))
+
+    (dm/assert!
+     "expected file-id"
+     (uuid? file-id))
+
+    (ptk/reify ::update-color-data
+      ptk/WatchEvent
+      (watch [it state _]
+        (let [color (assoc color :name (dm/str (:path color) "/" (:name color)))]
+          (update-color* it state color file-id))))))
+
 (defn rename-color
   [file-id id new-name]
   (dm/assert!
@@ -586,7 +605,7 @@
   in the given file library. Then selects the newly created instance."
   ([file-id component-id position]
    (instantiate-component file-id component-id position nil))
-  ([file-id component-id position {:keys [start-move? initial-point id-ref]}]
+  ([file-id component-id position {:keys [start-move? initial-point id-ref origin]}]
    (dm/assert! (uuid? file-id))
    (dm/assert! (uuid? component-id))
    (dm/assert! (gpt/point? position))
@@ -600,6 +619,8 @@
              changes   (-> (pcb/empty-changes it (:id page))
                            (pcb/with-objects objects))
 
+             current-file-id (:current-file-id state)
+
              [new-shape changes]
              (cll/generate-instantiate-component changes
                                                  objects
@@ -608,12 +629,18 @@
                                                  position
                                                  page
                                                  libraries)
+
              undo-id (js/Symbol)]
 
          (when id-ref
            (reset! id-ref (:id new-shape)))
 
-         (rx/of (dwu/start-undo-transaction undo-id)
+         (rx/of (ptk/event
+                 ::ev/event
+                 {::ev/name "use-library-component"
+                  ::ev/origin origin
+                  :external-library (not= file-id current-file-id)})
+                (dwu/start-undo-transaction undo-id)
                 (dch/commit-changes changes)
                 (ptk/data-event :layout/update {:ids [(:id new-shape)]})
                 (dws/select-shapes (d/ordered-set (:id new-shape)))
@@ -881,11 +908,15 @@
          (rx/of
           (dwu/start-undo-transaction undo-id)
           (update-component shape-id undo-group)
-          (sync-file current-file-id file-id :components (:component-id shape) undo-group)
+
+          ;; These two calls are necessary for properly sync thumbnails
+          ;; when a main component does not live in the same page
           (update-component-thumbnail-sync state component-id file-id "frame")
           (update-component-thumbnail-sync state component-id file-id "component")
+
+          (sync-file current-file-id file-id :components component-id undo-group)
           (when (not current-file?)
-            (sync-file file-id file-id :components (:component-id shape) undo-group))
+            (sync-file file-id file-id :components component-id undo-group))
           (dwu/commit-undo-transaction undo-id)))))))
 
 (defn launch-component-sync
@@ -937,9 +968,9 @@
       ;; in the grid creating new rows/columns to make space
       (let [file      (wsh/get-file state file-id)
             libraries (wsh/get-libraries state)
-            page    (wsh/lookup-page state)
-            objects (wsh/lookup-page-objects state)
-            parent (get objects (:parent-id shape))
+            page      (wsh/lookup-page state)
+            objects   (wsh/lookup-page-objects state)
+            parent    (get objects (:parent-id shape))
 
             ;; If the target parent is a grid layout we need to pass the target cell
             target-cell (when (ctl/grid-layout? parent)

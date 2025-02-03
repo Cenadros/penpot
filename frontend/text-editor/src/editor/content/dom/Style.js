@@ -76,6 +76,17 @@ function getInertElement() {
 }
 
 /**
+ * Returns a default declaration.
+ *
+ * @returns {CSSStyleDeclaration}
+ */
+function getStyleDefaultsDeclaration() {
+  const element = getInertElement();
+  resetInertElement();
+  return element.style;
+}
+
+/**
  * Computes the styles of an element the same way `window.getComputedStyle` does.
  *
  * @param {Element} element
@@ -115,14 +126,15 @@ export function getComputedStyle(element) {
  *       CSS properties like `font-family` or some CSS variables.
  *
  * @param {Node} node
- * @param {CSSStyleDeclaration} styleDefaults
+ * @param {CSSStyleDeclaration} [styleDefaults]
  * @returns {CSSStyleDeclaration}
  */
-export function normalizeStyles(node, styleDefaults) {
+export function normalizeStyles(node, styleDefaults = getStyleDefaultsDeclaration()) {
   const styleDeclaration = mergeStyleDeclarations(
     styleDefaults,
     getComputedStyle(node.parentElement)
   );
+
   // If there's a color property, we should convert it to
   // a --fills CSS variable property.
   const fills = styleDeclaration.getPropertyValue("--fills");
@@ -130,7 +142,10 @@ export function normalizeStyles(node, styleDefaults) {
   if (color && !fills) {
     styleDeclaration.removeProperty("color");
     styleDeclaration.setProperty("--fills", getFills(color));
+  } else {
+    styleDeclaration.setProperty("--fills", fills);
   }
+
   // If there's a font-family property and not a --font-id, then
   // we remove the font-family because it will not work.
   const fontFamily = styleDeclaration.getPropertyValue("font-family");
@@ -145,11 +160,19 @@ export function normalizeStyles(node, styleDefaults) {
   }
 
   const lineHeight = styleDeclaration.getPropertyValue("line-height");
-  if (!lineHeight || lineHeight === "") {
+  if (!lineHeight || lineHeight === "" || !lineHeight.endsWith("px")) {
+    // TODO: Podríamos convertir unidades en decimales.
     styleDeclaration.setProperty("line-height", DEFAULT_LINE_HEIGHT);
+  } else if (lineHeight.endsWith("px")) {
+    const fontSize = styleDeclaration.getPropertyValue("font-size");
+    styleDeclaration.setProperty(
+      "line-height",
+      parseFloat(lineHeight) / parseFloat(fontSize),
+    );
   }
   return styleDeclaration
 }
+
 /**
  * Sets a single style property value of an element.
  *
@@ -174,12 +197,30 @@ export function setStyle(element, styleName, styleValue, styleUnit) {
 }
 
 /**
+ * Returns the value of the font size
+ *
+ * @param {number} styleValueAsNumber
+ * @param {string} styleValue
+ * @returns {string}
+ */
+function getStyleFontSize(styleValueAsNumber, styleValue) {
+  if (styleValue.endsWith("pt")) {
+    return (styleValueAsNumber * 1.3333).toFixed();
+  } else if (styleValue.endsWith("em")) {
+    return (styleValueAsNumber * baseSize).toFixed();
+  } else if (styleValue.endsWith("%")) {
+    return ((styleValueAsNumber / 100) * baseSize).toFixed();
+  }
+  return styleValueAsNumber.toFixed();
+}
+
+/**
  * Returns the value of a style from a declaration.
  *
  * @param {CSSStyleDeclaration} style
  * @param {string} styleName
  * @param {string|undefined} [styleUnit]
- * @returns {*}
+ * @returns {string}
  */
 export function getStyleFromDeclaration(style, styleName, styleUnit) {
   if (styleName.startsWith("--")) {
@@ -189,7 +230,16 @@ export function getStyleFromDeclaration(style, styleName, styleUnit) {
   if (styleValue.endsWith(styleUnit)) {
     return styleValue.slice(0, -styleUnit.length);
   }
-  return styleValue;
+  const styleValueAsNumber = parseFloat(styleValue);
+  if (styleName === "font-size") {
+    return getStyleFontSize(styleValueAsNumber, styleValue);
+  } else if (styleName === "line-height") {
+    return styleValue
+  }
+  if (Number.isNaN(styleValueAsNumber)) {
+    return styleValue;
+  }
+  return styleValueAsNumber.toFixed();
 }
 
 /**

@@ -11,6 +11,7 @@
    [app.main.data.events :as ev]
    [app.main.data.persistence :as dwp]
    [app.main.data.workspace :as dw]
+   [app.main.data.workspace.thumbnails :as th]
    [app.main.refs :as refs]
    [app.main.repo :as rp]
    [app.util.time :as dt]
@@ -126,11 +127,13 @@
     ptk/WatchEvent
     (watch [_ _ _]
       (rx/concat
-       (rx/of ::dwp/force-persist)
+       (rx/of ::dwp/force-persist
+              (dw/remove-layout-flag :document-history))
        (->> (rx/from-atom refs/persistence-state {:emit-current-value? true})
             (rx/filter #(or (nil? %) (= :saved %)))
             (rx/take 1)
             (rx/mapcat #(rp/cmd! :restore-file-snapshot {:file-id file-id :id id}))
+            (rx/tap #(th/clear-queue!))
             (rx/map #(dw/initialize-file project-id file-id)))
        (case origin
          :version
